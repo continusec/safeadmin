@@ -19,7 +19,6 @@ limitations under the License.
 package safeadmin
 
 import (
-	context "golang.org/x/net/context"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
@@ -35,6 +34,8 @@ import (
 	"path/filepath"
 	"time"
 
+	context "golang.org/x/net/context"
+
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 
@@ -44,11 +45,11 @@ import (
 )
 
 var (
-	ErrBadCert            = errors.New("Unable to understand baked-in cert")
-	ErrCertNotValidBefore = errors.New("Cert is not valid before now")
-	ErrCertNotValidAfter  = errors.New("Cert is not after before now")
-	ErrCertNotRSA         = errors.New("Cert should be RSA algorithm")
-	ErrCertWontCast       = errors.New("Cert public key won't cast")
+	ErrBadCert                 = errors.New("Unable to understand baked-in cert")
+	ErrCertNotValidBefore      = errors.New("Cert is not valid before now")
+	ErrCertNotValidAfter       = errors.New("Cert is not after before now")
+	ErrCertNotRSA              = errors.New("Cert should be RSA algorithm")
+	ErrCertWontCast            = errors.New("Cert public key won't cast")
 	ErrUnexpectedLengthOfBlock = errors.New("Unexpected length of block")
 )
 
@@ -212,9 +213,9 @@ func DecryptWithTTL(keyOracle Oracle, in io.Reader, out io.Writer) error {
 		return err
 	}
 
-    if ehLen > 100000 { // sanity check, should be much smaller
-        return ErrUnexpectedLengthOfBlock
-    }
+	if ehLen > 100000 { // sanity check, should be much smaller
+		return ErrUnexpectedLengthOfBlock
+	}
 
 	ehb := make([]byte, ehLen)
 	_, err = in.Read(ehb)

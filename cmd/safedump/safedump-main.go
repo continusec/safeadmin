@@ -19,6 +19,7 @@ limitations under the License.
 package main
 
 import (
+	"flag"
 	"os"
 	"time"
 
@@ -26,9 +27,9 @@ import (
 )
 
 func main() {
-    var days int
+	var days int
 
-    flag.IntVar(&days, "days", 1, "How many days the data should be decryptable for without manual intervention")
+	flag.IntVar(&days, "days", 1, "How many days the data should be decryptable for without manual intervention")
 
 	config, err := safeadmin.LoadClientConfiguration()
 	if err != nil {
