@@ -43,7 +43,7 @@ func main() {
 		panic(err)
 	}
 
-	err = safeadmin.EncryptWithTTL(rsaPubKey, spki, now.Add(days*24*time.Hour), os.Stdin, os.Stdout)
+	err = safeadmin.EncryptWithTTL(rsaPubKey, spki, now.Add(time.Duration(days)*24*time.Hour), os.Stdin, os.Stdout)
 	if err != nil {
 		panic(err)
 	}
