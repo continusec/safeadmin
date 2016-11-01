@@ -76,8 +76,8 @@ func (s *SafeDumpServer) getCurrentCertificate() ([]byte, error) {
 	// Use a barebone template
 	s.lastValidTime = now.Add(time.Hour * 24)
 	tmpl := &x509.Certificate{
-		SerialNumber:       big.NewInt(0), // appears to be a required element
-		NotBefore:          now,
+		SerialNumber:       big.NewInt(0),                        // appears to be a required element
+		NotBefore:          now.Add(-5 * time.Minute),             // allow for clock skew
 		NotAfter:           s.lastValidTime.Add(5 * time.Minute), // 24 hours should be long enough, give a little longer to allow for clock skew
 		SignatureAlgorithm: x509.SHA256WithRSA,
 	}
