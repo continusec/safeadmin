@@ -1,4 +1,4 @@
-# Problem Statment
+# Problem Statement
 
 After seeing [yet another data breach](http://www.news.com.au/technology/red-cross-blood-service-exposes-more-than-550000-medical-records-in-record-data-breach/news-story/bafc5218c7cba1238f87dab6db8b7238) due to inadvertent SQL dumps being left on the wrong server (or at least a similar cause) the author made the following observations:
 
