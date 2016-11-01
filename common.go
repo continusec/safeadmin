@@ -19,7 +19,7 @@ limitations under the License.
 package safeadmin
 
 import (
-	"context"
+	context "golang.org/x/net/context"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
