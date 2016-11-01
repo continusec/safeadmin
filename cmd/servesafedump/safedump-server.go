@@ -77,7 +77,7 @@ func (s *SafeDumpServer) getCurrentCertificate() ([]byte, error) {
 	s.lastValidTime = now.Add(time.Hour * 24)
 	tmpl := &x509.Certificate{
 		SerialNumber:       big.NewInt(0),                        // appears to be a required element
-		NotBefore:          now.Add(-5 * time.Minute),             // allow for clock skew
+		NotBefore:          now.Add(-5 * time.Minute),            // allow for clock skew
 		NotAfter:           s.lastValidTime.Add(5 * time.Minute), // 24 hours should be long enough, give a little longer to allow for clock skew
 		SignatureAlgorithm: x509.SHA256WithRSA,
 	}
@@ -164,6 +164,7 @@ func (s *SafeDumpServer) DecryptSecret(ctx context.Context, req *pb.DecryptSecre
 	}
 
 	if time.Now().After(time.Unix(req.Header.Ttl, 0)) {
+		log.Println("WARNING: Attempted decode with expired header")
 		return nil, errors.New("TTL expired")
 	}
 

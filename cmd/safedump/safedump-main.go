@@ -20,6 +20,7 @@ package main
 
 import (
 	"flag"
+	"log"
 	"os"
 	"time"
 
@@ -27,9 +28,10 @@ import (
 )
 
 func main() {
-	var days int
+	var duration time.Duration
 
-	flag.IntVar(&days, "days", 1, "How many days the data should be decryptable for without manual intervention")
+	flag.DurationVar(&duration, "for", 24*time.Hour, "Duration for which this data may be restored")
+	flag.Parse()
 
 	config, err := safeadmin.LoadClientConfiguration()
 	if err != nil {
@@ -43,7 +45,11 @@ func main() {
 		panic(err)
 	}
 
-	err = safeadmin.EncryptWithTTL(rsaPubKey, spki, now.Add(time.Duration(days)*24*time.Hour), os.Stdin, os.Stdout)
+	ttl := now.Add(duration)
+
+	log.Println("Encrypting until:", ttl)
+
+	err = safeadmin.EncryptWithTTL(rsaPubKey, spki, ttl, os.Stdin, os.Stdout)
 	if err != nil {
 		panic(err)
 	}

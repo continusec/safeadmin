@@ -27,6 +27,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"io"
 	"io/ioutil"
@@ -304,7 +305,9 @@ func GetCurrentCertificate(config *pb.ClientConfig, now time.Time) (*rsa.PublicK
 	if err != nil {
 		return nil, nil, err
 	}
-	path := filepath.Join(hd, ".safedump_cached_cert")
+	// Make sure the cached cert is unique per server, or we'll encode with a key that won't decode
+	hb := sha256.Sum256([]byte(config.GrpcServer))
+	path := filepath.Join(hd, ".safedump_cached_cert_for_"+hex.EncodeToString(hb[:]))
 	cd, err := ioutil.ReadFile(path)
 	if err == nil {
 		rv, spki, err := GetPublicKeyIfValidForNow(cd, now)

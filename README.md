@@ -19,7 +19,7 @@ Since many of these operations are ad-hoc, often various data dumps are forgotte
 
 Add the following to the pipeline:
 
-    mysqldump mydb | bzip2 -c | safedump --days=2 > dump_mydb_2016-11-01.sql.bz2
+    mysqldump mydb | bzip2 -c | safedump --for 24h > dump_mydb_2016-11-01.sql.bz2
 
 And on the other end:
 
@@ -37,9 +37,9 @@ Your administrator runs a server on your network (`servesafedump` below) that pe
 
 Returns a short-lived self-signed certificate that includes an RSA public-key and a validity period. This period (typically 24 hours) signifies when a client should discard this certificate from any caches to fetch a new one (if a client uses an out of date public key, they risk the server deleting the private key before the client needs it).
 
-When `safedump --days=2` runs, it checks to see if it has a currently valid certificate in `~/.safedump_cached_cert`, and if not it contacts the configured server (per `~/.safedump_config`) to get the current certificate.
+When `safedump` runs, it checks to see if it has a currently valid certificate in `~/.safedump_cached_cert`, and if not it contacts the configured server (per `~/.safedump_config`) to get the current certificate.
 
-It then generates locally a once-off 256-bit AES key, and encrypts this using OAEP with the public key from the current certificate using the TTL (now + 2 days in our example) as the label input.
+It then generates locally a once-off 256-bit AES key, and encrypts this using OAEP with the public key from the current certificate using the TTL (now + 24 hours in our example) as the label input.
 
 A header including the SPKI SHA256 fingerprint of the certificate that contained the public key used to encrypt the private key, the TTL and the OAEP result is written to `stdout`, followed by the rest of `stdin` encrypted using AES CTR with the generated AES key.
 
@@ -67,8 +67,11 @@ Generate a TLS certificate for your server, e.g.
 Create a configuration file for your server, e.g.
 	
     cat <<EOF > server_config.proto
-    # Port to listen for gRPC requests on (HTTP/2).
-    listen_port: 10001
+    # Address to bind to listen for gRPC requests on (HTTP/2).
+    listen_bind: ":10001"
+
+    # tcp4 or tcp
+    listen_protocol: "tcp4"
 
     # TLS cert / key to use for gRPC server, e.g.
     server_cert_path: "grpc-cert.pem"
@@ -110,12 +113,20 @@ Now, happily pipe to/from `safedump` and `saferestore`.
 
 ## How does `safedump` and `saferestore` authenticate to the server?
 
-They don't. The aim of this tool is to be simple to roll-out, and an improvment on the status quo (unencrypted files on disk). It is not intended to be the only security mechanism for protecting dump files.
+They don't. The aim of this tool is to be simple to roll-out, and an improvement on the status quo (unencrypted files on disk). It is not intended to be the only security mechanism for protecting dump files.
 
 ## How can I decrypt a file after the expiry time?
 
 The server saves all of the private keys to the certs directory specified in the server config. It would be a good exercise to write a tool that can be run out-of-band to do this - but I haven't needed to yet.
 
+# TODO list
+
+- Have the server delete old key automatically
+- Allow out-of-band decryption of older files with manual approval step
+
 # Contact information
+
+Feedback welcome!
+
 Adam Eijdenberg <adam@continusec.com>
 
