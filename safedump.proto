@@ -47,7 +47,7 @@ message EncryptedHeader {
 message ServerConfig {
     string server_cert_path = 1;
     string server_key_path = 2;
-    int32 listen_port = 3;
+    string listen_bind = 3; // e.g. ":10001"
     string archived_keys_dir = 4;
 }
 

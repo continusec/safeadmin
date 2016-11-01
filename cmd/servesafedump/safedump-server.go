@@ -26,7 +26,6 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"io/ioutil"
 	"log"
 	"math/big"
@@ -207,7 +206,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", conf.ListenPort))
+	lis, err := net.Listen("tcp", conf.ListenBind)
 	if err != nil {
 		log.Fatal(err)
 	}
