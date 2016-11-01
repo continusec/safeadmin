@@ -49,6 +49,7 @@ message ServerConfig {
     string server_key_path = 2;
     string listen_bind = 3; // e.g. ":10001"
     string archived_keys_dir = 4;
+    string listen_protocol = 5; // e.g "tcp4" or "tcp" or "tcp6"
 }
 
 message ClientConfig {

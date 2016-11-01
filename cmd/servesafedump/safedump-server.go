@@ -206,7 +206,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	lis, err := net.Listen("tcp", conf.ListenBind)
+	lis, err := net.Listen(conf.ListenProtocol, conf.ListenBind)
 	if err != nil {
 		log.Fatal(err)
 	}

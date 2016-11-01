@@ -3,6 +3,9 @@
 # Address (host:port) to listen for gRPC requests on (HTTP/2).
 listen_bind: ":10001"
 
+# tcp4 or 6
+listen_protocol: "tcp4"
+
 # TLS cert / key to use for gRPC server, e.g.
 # openssl req -x509 -newkey rsa:4096 -keyout grpc-key.pem -out grpc-cert.pem -days 3600 -nodes -subj '/CN=localhost' -batch
 server_cert_path: "grpc-cert.pem"
