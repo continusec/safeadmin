@@ -1,20 +1,55 @@
+/*
+
+Copyright 2016 Continusec Pty Ltd
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+*/
+
 package safeadmin
 
 import (
-	"bytes"
+	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/binary"
-	"encoding/gob"
-	"encoding/pem"
 	"errors"
 	"io"
 	"io/ioutil"
+	"log"
+	"path/filepath"
 	"time"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+
+	pb "github.com/continusec/safeadmin/proto"
+	"github.com/golang/protobuf/proto"
+	homedir "github.com/mitchellh/go-homedir"
+)
+
+var (
+	ErrBadCert            = errors.New("Unable to understand baked-in cert")
+	ErrCertNotValidBefore = errors.New("Cert is not valid before now")
+	ErrCertNotValidAfter  = errors.New("Cert is not after before now")
+	ErrCertNotRSA         = errors.New("Cert should be RSA algorithm")
+	ErrCertWontCast       = errors.New("Cert public key won't cast")
+	ErrUnexpectedLengthOfBlock = errors.New("Unexpected length of block")
 )
 
 func encrypt(key []byte, in io.Reader, out io.Writer) error {
@@ -83,7 +118,7 @@ type EncryptHeader struct {
 	EncryptedAESKey []byte         // the encrypted key (OAEP)
 }
 
-func EncryptWithTTL(rsaPubKey *rsa.PublicKey, ttl time.Time, in io.Reader, out io.Writer) error {
+func EncryptWithTTL(rsaPubKey *rsa.PublicKey, spki []byte, ttl time.Time, in io.Reader, out io.Writer) error {
 	ttlb := make([]byte, 8)
 	binary.BigEndian.PutUint64(ttlb, uint64(ttl.Unix()))
 
@@ -98,16 +133,14 @@ func EncryptWithTTL(rsaPubKey *rsa.PublicKey, ttl time.Time, in io.Reader, out i
 		return err
 	}
 
-	gobHeaderBuffer := &bytes.Buffer{}
-	err = gob.NewEncoder(gobHeaderBuffer).Encode(&EncryptHeader{
-		PublicKey:       rsaPubKey,
-		TTL:             ttl,
-		EncryptedAESKey: oaepResult,
+	gbs, err := proto.Marshal(&pb.EncryptedHeader{
+		Ttl:             ttl.Unix(),
+		EncryptedKey:    oaepResult,
+		SpkiFingerprint: spki,
 	})
 	if err != nil {
 		return err
 	}
-	gbs := gobHeaderBuffer.Bytes()
 
 	// Length prefix the gob or we struggle to read it, since the decoder seems to be greedy
 	err = binary.Write(out, binary.BigEndian, uint64(len(gbs)))
@@ -129,27 +162,47 @@ func EncryptWithTTL(rsaPubKey *rsa.PublicKey, ttl time.Time, in io.Reader, out i
 }
 
 type Oracle interface {
-	GetPrivateKey(*EncryptHeader) ([]byte, error)
+	GetPrivateKey(*pb.EncryptedHeader) ([]byte, error)
 }
 
 type PrivateKeyOracle struct {
 	Key *rsa.PrivateKey
 }
 
-func (pko *PrivateKeyOracle) GetPrivateKey(eh *EncryptHeader) ([]byte, error) {
-	if time.Now().After(eh.TTL) {
+func (pko *PrivateKeyOracle) GetPrivateKey(eh *pb.EncryptedHeader) ([]byte, error) {
+	if time.Now().After(time.Unix(eh.Ttl, 0)) {
 		return nil, errors.New("TTL expired.")
 	}
 
 	ttlb := make([]byte, 8)
-	binary.BigEndian.PutUint64(ttlb, uint64(eh.TTL.Unix()))
+	binary.BigEndian.PutUint64(ttlb, uint64(eh.Ttl))
 
-	key, err := rsa.DecryptOAEP(sha256.New(), rand.Reader, pko.Key, eh.EncryptedAESKey, ttlb)
+	key, err := rsa.DecryptOAEP(sha256.New(), rand.Reader, pko.Key, eh.EncryptedKey, ttlb)
 	if err != nil {
 		return nil, err
 	}
 
 	return key, nil
+}
+
+type GrpcOracle struct {
+	Config *pb.ClientConfig
+}
+
+func (gko *GrpcOracle) GetPrivateKey(eh *pb.EncryptedHeader) ([]byte, error) {
+	conn, err := CreateGrpcConn(gko.Config)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+	client := pb.NewSafeDumpServiceClient(conn)
+
+	resp, err := client.DecryptSecret(context.Background(), &pb.DecryptSecretRequest{Header: eh})
+	if err != nil {
+		return nil, err
+	}
+
+	return resp.Key, nil
 }
 
 func DecryptWithTTL(keyOracle Oracle, in io.Reader, out io.Writer) error {
@@ -159,18 +212,23 @@ func DecryptWithTTL(keyOracle Oracle, in io.Reader, out io.Writer) error {
 		return err
 	}
 
+    if ehLen > 100000 { // sanity check, should be much smaller
+        return ErrUnexpectedLengthOfBlock
+    }
+
 	ehb := make([]byte, ehLen)
 	_, err = in.Read(ehb)
 	if err != nil {
 		return err
 	}
 
-	var eh EncryptHeader
-	err = gob.NewDecoder(bytes.NewReader(ehb)).Decode(&eh)
+	eh := &pb.EncryptedHeader{}
+	err = proto.Unmarshal(ehb, eh)
 	if err != nil {
 		return err
 	}
-	key, err := keyOracle.GetPrivateKey(&eh)
+
+	key, err := keyOracle.GetPrivateKey(eh)
 	if err != nil {
 		return err
 	}
@@ -196,58 +254,111 @@ func DecryptWithTTL(keyOracle Oracle, in io.Reader, out io.Writer) error {
 	return nil
 }
 
-func LoadRSAKeyFromCertValidForTime(path string, now time.Time) (*rsa.PublicKey, error) {
-	cert, err := ioutil.ReadFile(path)
+func LoadClientConfiguration() (*pb.ClientConfig, error) {
+	hd, err := homedir.Dir()
 	if err != nil {
 		return nil, err
 	}
-	block, _ := pem.Decode(cert)
-	if block == nil {
-		return nil, errors.New("No PEM block found")
-	}
-	if block.Type != "CERTIFICATE" {
-		return nil, errors.New("Expected BEGIN CERTIFICATE")
-	}
-	certificate, err := x509.ParseCertificate(block.Bytes)
+	path := filepath.Join(hd, ".safedump_config")
+
+	confData, err := ioutil.ReadFile(path)
 	if err != nil {
 		return nil, err
+	}
+
+	conf := &pb.ClientConfig{}
+	err = proto.UnmarshalText(string(confData), conf)
+	if err != nil {
+		return nil, err
+	}
+
+	return conf, nil
+}
+
+func GetPublicKeyIfValidForNow(der []byte, now time.Time) (*rsa.PublicKey, []byte, error) {
+	certificate, err := x509.ParseCertificate(der)
+	if err != nil {
+		return nil, nil, err
 	}
 	if now.Before(certificate.NotBefore) {
-		return nil, errors.New("Cert is not valid before now")
+		return nil, nil, ErrCertNotValidBefore
 	}
 	if now.After(certificate.NotAfter) {
-		return nil, errors.New("Cert is not after before now")
+		return nil, nil, ErrCertNotValidAfter
 	}
 	if certificate.PublicKeyAlgorithm != x509.RSA {
-		return nil, errors.New("Cert should be RSA algorithm")
+		return nil, nil, ErrCertNotRSA
 	}
 	rsaPubKey, ok := certificate.PublicKey.(*rsa.PublicKey)
 	if !ok {
-		return nil, errors.New("Cert public key won't cast")
+		return nil, nil, ErrCertWontCast
 	}
-	return rsaPubKey, nil
+
+	spki := sha256.Sum256(certificate.RawSubjectPublicKeyInfo)
+	return rsaPubKey, spki[:], nil
 }
 
-func LoadPrivateRSAKey(path string) (*rsa.PrivateKey, error) {
-	key, err := ioutil.ReadFile(path)
+func GetCurrentCertificate(config *pb.ClientConfig, now time.Time) (*rsa.PublicKey, []byte, error) {
+	hd, err := homedir.Dir()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	block, _ := pem.Decode(key)
-	if block == nil {
-		return nil, errors.New("No PEM block found")
+	path := filepath.Join(hd, ".safedump_cached_cert")
+	cd, err := ioutil.ReadFile(path)
+	if err == nil {
+		rv, spki, err := GetPublicKeyIfValidForNow(cd, now)
+		if err == nil {
+			return rv, spki, nil
+		} // else, we'll fetch a new one
+	} // else, we'll fetch a new one
+
+	conn, err := CreateGrpcConn(config)
+	if err != nil {
+		return nil, nil, err
 	}
-	if block.Type != "PRIVATE KEY" {
-		return nil, errors.New("Expected BEGIN PRIVATE KEY")
+	defer conn.Close()
+	client := pb.NewSafeDumpServiceClient(conn)
+
+	resp, err := client.GetPublicCert(context.Background(), &pb.GetPublicCertRequest{})
+	if err != nil {
+		return nil, nil, err
 	}
-	pkey, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+
+	rv, spki, err := GetPublicKeyIfValidForNow(resp.Der, now)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	err = ioutil.WriteFile(path, resp.Der, 0644)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return rv, spki, nil
+}
+
+func CreateGrpcConn(config *pb.ClientConfig) (*grpc.ClientConn, error) {
+	// Get certs
+	var dialOptions []grpc.DialOption
+	if config.NoGrpcSecurity {
+		// use system CA pool but disable cert validation
+		log.Println("WARNING: Disabling TLS authentication when connecting to gRPC server")
+		dialOptions = append(dialOptions, grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{InsecureSkipVerify: true})))
+	} else if config.UseSystemCaForGrpc {
+		dialOptions = append(dialOptions, grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{}))) // uses the system CA pool
+	} else {
+		// use baked in cert
+		cp := x509.NewCertPool()
+		if !cp.AppendCertsFromPEM([]byte(config.GrpcCert)) {
+			return nil, ErrBadCert
+		}
+		dialOptions = append(dialOptions, grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{RootCAs: cp})))
+	}
+
+	conn, err := grpc.Dial(config.GrpcServer, dialOptions...)
 	if err != nil {
 		return nil, err
 	}
 
-	rpkey, ok := pkey.(*rsa.PrivateKey)
-	if !ok {
-		return nil, errors.New("Not an *rsa.PrivateKey")
-	}
-	return rpkey, nil
+	return conn, nil
 }

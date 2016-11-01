@@ -1,9 +1,23 @@
-package main
+/*
 
-// Generate self-signed cert:
-// openssl req -newkey rsa:2048 -nodes -keyout key.pem -x509 -days 3 -out cert.pem -subj "/CN=SafeDumper" -batch
-//
-// All we care about in the cert is the public key and dates.
+Copyright 2016 Continusec Pty Ltd
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+*/
+
+
+package main
 
 import (
 	"os"
@@ -12,12 +26,12 @@ import (
 )
 
 func main() {
-	rsaPrivateKey, err := safeadmin.LoadPrivateRSAKey("key.pem")
+	config, err := safeadmin.LoadClientConfiguration()
 	if err != nil {
 		panic(err)
 	}
 
-	err = safeadmin.DecryptWithTTL(&safeadmin.PrivateKeyOracle{Key: rsaPrivateKey}, os.Stdin, os.Stdout)
+	err = safeadmin.DecryptWithTTL(&safeadmin.GrpcOracle{Config: config}, os.Stdin, os.Stdout)
 	if err != nil {
 		panic(err)
 	}

@@ -1,0 +1,16 @@
+##### SERVER CONFIGURATION
+
+# Port to listen for gRPC requests on (HTTP/2).
+listen_port: 10001
+
+# TLS cert / key to use for gRPC server, e.g.
+# openssl req -x509 -newkey rsa:4096 -keyout grpc-key.pem -out grpc-cert.pem -days 3600 -nodes -subj '/CN=localhost' -batch
+server_cert_path: "grpc-cert.pem"
+server_key_path: "grpc-key.pem"
+
+# New certificates and keys will be dropped into this directory before use
+# You probably want to delete old ones to render dumped files unusable
+# <SPKI, sha256, in hex>.key.der
+# <SPKI, sha256, in hex>_YYYY-MM-DD.cert.der (date in UTC, informational)
+archived_keys_dir: "/tmp/certs"
+

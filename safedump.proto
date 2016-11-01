@@ -1,0 +1,59 @@
+/*
+
+Copyright 2016 Continusec Pty Ltd
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+*/
+
+syntax = "proto3";
+
+service SafeDumpService {
+    rpc GetPublicCert (GetPublicCertRequest) returns (GetPublicCertResponse) {}
+    rpc DecryptSecret (DecryptSecretRequest) returns (DecryptSecretResponse) {}
+}
+
+message GetPublicCertRequest {
+}
+
+message GetPublicCertResponse {
+    bytes der = 1;
+}
+
+message DecryptSecretRequest {
+    EncryptedHeader header = 1;
+}
+
+message DecryptSecretResponse {
+    bytes key = 1;
+}
+
+message EncryptedHeader {
+    bytes spki_fingerprint = 1; // sha256 of the SPKI for the public key used to sign
+    int64 ttl = 2;              // unix time in seconds, after which we are out of band
+    bytes encrypted_key = 3;    // the encrypted key (OAEP, with label ttl)
+}
+
+message ServerConfig {
+    string server_cert_path = 1;
+    string server_key_path = 2;
+    int32 listen_port = 3;
+    string archived_keys_dir = 4;
+}
+
+message ClientConfig {
+    bool no_grpc_security = 1;
+    bool use_system_ca_for_grpc = 2;
+    string grpc_cert = 3; // PEM
+    string grpc_server = 4; // host:port
+}    
