@@ -21,17 +21,13 @@ package main
 import (
 	"crypto/rand"
 	"crypto/rsa"
-	"crypto/sha256"
 	"crypto/x509"
-	"encoding/binary"
-	"encoding/hex"
 	"errors"
 	"io/ioutil"
 	"log"
 	"math/big"
 	"net"
 	"os"
-	"path"
 	"sync"
 	"time"
 
@@ -40,18 +36,28 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 
+	"github.com/continusec/safeadmin"
 	pb "github.com/continusec/safeadmin/proto"
 	"github.com/golang/protobuf/proto"
 )
 
 type SafeDumpServer struct {
-	Config *pb.ServerConfig
+	Config    *pb.ServerConfig
+	keyOracle *safeadmin.KeyDirOracle
 
 	certLock      sync.Mutex
 	lastValidTime time.Time
 	currentCert   []byte
-	keys          map[string]*rsa.PrivateKey // hex spki sha256 hash to private key
+}
 
+func (s *SafeDumpServer) Init() error {
+	s.keyOracle = &safeadmin.KeyDirOracle{KeyDir: s.Config.ArchivedKeysDir}
+	err := s.keyOracle.Init()
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // Return DER bytes for a certificate that is valid, creating a new one
@@ -87,64 +93,14 @@ func (s *SafeDumpServer) getCurrentCertificate() ([]byte, error) {
 		return nil, err
 	}
 
-	cert, err := x509.ParseCertificate(der)
+	err = s.keyOracle.PersistKey(der, pkey)
 	if err != nil {
 		return nil, err
 	}
-
-	hb := sha256.Sum256(cert.RawSubjectPublicKeyInfo)
-
-	spkiName := hex.EncodeToString(hb[:])
-	dateString := now.UTC().Format(time.RFC3339)[:10]
-
-	err = ioutil.WriteFile(path.Join(s.Config.ArchivedKeysDir, spkiName+"_"+dateString+".cert.der"), der, 0644)
-	if err != nil {
-		return nil, err
-	}
-
-	// No date in this name since we want to be able to easily load it
-	err = ioutil.WriteFile(path.Join(s.Config.ArchivedKeysDir, spkiName+".key.der"), x509.MarshalPKCS1PrivateKey(pkey), 0600)
-	if err != nil {
-		return nil, err
-	}
-
-	if s.keys == nil {
-		s.keys = make(map[string]*rsa.PrivateKey)
-	}
-	s.keys[spkiName] = pkey
 
 	s.currentCert = der
 
 	return der, nil
-}
-
-func (s *SafeDumpServer) getPrivateKey(spki []byte) (*rsa.PrivateKey, error) {
-	s.certLock.Lock()
-	defer s.certLock.Unlock()
-
-	if s.keys == nil {
-		s.keys = make(map[string]*rsa.PrivateKey)
-	}
-
-	spkiName := hex.EncodeToString(spki[:])
-	rv, ok := s.keys[spkiName]
-	if ok {
-		return rv, nil
-	}
-
-	der, err := ioutil.ReadFile(path.Join(s.Config.ArchivedKeysDir, spkiName+".key.der"))
-	if err != nil {
-		return nil, err
-	}
-
-	pkey, err := x509.ParsePKCS1PrivateKey(der)
-	if err != nil {
-		return nil, err
-	}
-
-	s.keys[spkiName] = pkey
-
-	return pkey, nil
 }
 
 func (s *SafeDumpServer) GetPublicCert(context.Context, *pb.GetPublicCertRequest) (*pb.GetPublicCertResponse, error) {
@@ -163,22 +119,10 @@ func (s *SafeDumpServer) DecryptSecret(ctx context.Context, req *pb.DecryptSecre
 		return nil, errors.New("No header")
 	}
 
-	if time.Now().After(time.Unix(req.Header.Ttl, 0)) {
-		log.Println("WARNING: Attempted decode with expired header")
-		return nil, errors.New("TTL expired")
-	}
-
-	ttlb := make([]byte, 8)
-	binary.BigEndian.PutUint64(ttlb, uint64(req.Header.Ttl))
-
-	pkey, err := s.getPrivateKey(req.Header.SpkiFingerprint)
+	key, err := s.keyOracle.GetPrivateKey(req.Header)
 	if err != nil {
-		return nil, errors.New("Can't find private key")
-	}
-
-	key, err := rsa.DecryptOAEP(sha256.New(), rand.Reader, pkey, req.Header.EncryptedKey, ttlb)
-	if err != nil {
-		return nil, errors.New("No")
+		log.Println("WARNING: failed to decode:", err)
+		return nil, err
 	}
 
 	log.Println("Decoded key for someone...")
@@ -212,8 +156,14 @@ func main() {
 		log.Fatal(err)
 	}
 
+	sds := &SafeDumpServer{Config: conf}
+	err = sds.Init()
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	grpcServer := grpc.NewServer(grpc.Creds(tc))
-	pb.RegisterSafeDumpServiceServer(grpcServer, &SafeDumpServer{Config: conf})
+	pb.RegisterSafeDumpServiceServer(grpcServer, sds)
 
 	log.Println("Serving...")
 	grpcServer.Serve(lis)

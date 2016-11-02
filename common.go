@@ -32,7 +32,9 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"path"
 	"path/filepath"
+	"sync"
 	"time"
 
 	context "golang.org/x/net/context"
@@ -167,21 +169,94 @@ type Oracle interface {
 	GetPrivateKey(*pb.EncryptedHeader) ([]byte, error)
 }
 
-type PrivateKeyOracle struct {
-	Key *rsa.PrivateKey
+type KeyDirOracle struct {
+	KeyDir    string
+	IgnoreTTL bool
+
+	keyLock sync.Mutex
+	keys    map[string]*rsa.PrivateKey // hex spki sha256 hash to private key
 }
 
-func (pko *PrivateKeyOracle) GetPrivateKey(eh *pb.EncryptedHeader) ([]byte, error) {
-	if time.Now().After(time.Unix(eh.Ttl, 0)) {
-		return nil, errors.New("TTL expired.")
+func (kdo *KeyDirOracle) Init() error {
+	kdo.keys = make(map[string]*rsa.PrivateKey)
+	return nil
+}
+
+func (kdo *KeyDirOracle) PersistKey(certDer []byte, pkey *rsa.PrivateKey) error {
+	cert, err := x509.ParseCertificate(certDer)
+	if err != nil {
+		return err
+	}
+
+	hb := sha256.Sum256(cert.RawSubjectPublicKeyInfo)
+	spkiName := hex.EncodeToString(hb[:])
+
+	err = ioutil.WriteFile(path.Join(kdo.KeyDir, spkiName+".cert.der"), certDer, 0644)
+	if err != nil {
+		return err
+	}
+
+	err = ioutil.WriteFile(path.Join(kdo.KeyDir, spkiName+".key.der"), x509.MarshalPKCS1PrivateKey(pkey), 0600)
+	if err != nil {
+		return err
+	}
+
+	kdo.keyLock.Lock()
+	defer kdo.keyLock.Unlock()
+
+	kdo.keys[spkiName] = pkey
+
+	return nil
+}
+
+func (kdo *KeyDirOracle) LoadRsaPrivateKey(spki []byte) (*rsa.PrivateKey, error) {
+	kdo.keyLock.Lock()
+	defer kdo.keyLock.Unlock()
+
+	spkiName := hex.EncodeToString(spki)
+	rv, ok := kdo.keys[spkiName]
+	if ok {
+		return rv, nil
+	}
+
+	der, err := ioutil.ReadFile(path.Join(kdo.KeyDir, spkiName+".key.der"))
+	if err != nil {
+		return nil, err
+	}
+
+	pkey, err := x509.ParsePKCS1PrivateKey(der)
+	if err != nil {
+		return nil, ErrTTLExpired
+	}
+
+	kdo.keys[spkiName] = pkey
+	return pkey, nil
+}
+
+var (
+	ErrTTLExpired      = errors.New("TTL expired")
+	ErrUnableToLoadKey = errors.New("Unable to parse key")
+	ErrUnableToDecrypt = errors.New("Unable to decrypt")
+)
+
+func (kdo *KeyDirOracle) GetPrivateKey(eh *pb.EncryptedHeader) ([]byte, error) {
+	if !kdo.IgnoreTTL {
+		if time.Now().After(time.Unix(eh.Ttl, 0)) {
+			return nil, ErrTTLExpired
+		}
+	}
+
+	rsaKey, err := kdo.LoadRsaPrivateKey(eh.SpkiFingerprint)
+	if err != nil {
+		return nil, err
 	}
 
 	ttlb := make([]byte, 8)
 	binary.BigEndian.PutUint64(ttlb, uint64(eh.Ttl))
 
-	key, err := rsa.DecryptOAEP(sha256.New(), rand.Reader, pko.Key, eh.EncryptedKey, ttlb)
+	key, err := rsa.DecryptOAEP(sha256.New(), rand.Reader, rsaKey, eh.EncryptedKey, ttlb)
 	if err != nil {
-		return nil, err
+		return nil, ErrUnableToDecrypt
 	}
 
 	return key, nil
