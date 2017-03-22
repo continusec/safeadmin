@@ -19,7 +19,7 @@ limitations under the License.
 package safeadmin
 
 import (
-	"context"
+	context "golang.org/x/net/context"
 
 	"github.com/continusec/safeadmin/pb"
 )
