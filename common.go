@@ -19,6 +19,7 @@ limitations under the License.
 package safeadmin
 
 import (
+	"context"
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/tls"
@@ -29,12 +30,10 @@ import (
 	"path/filepath"
 	"time"
 
-	context "golang.org/x/net/context"
-
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 
-	pb "github.com/continusec/safeadmin/proto"
+	"github.com/continusec/safeadmin/pb"
 	"github.com/golang/protobuf/proto"
 	homedir "github.com/mitchellh/go-homedir"
 )

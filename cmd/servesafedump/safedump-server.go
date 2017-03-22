@@ -37,7 +37,7 @@ import (
 	"google.golang.org/grpc/credentials"
 
 	"github.com/continusec/safeadmin"
-	pb "github.com/continusec/safeadmin/proto"
+	"github.com/continusec/safeadmin/pb"
 	"github.com/golang/protobuf/proto"
 )
 

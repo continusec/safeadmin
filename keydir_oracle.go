@@ -30,7 +30,7 @@ import (
 	"sync"
 	"time"
 
-	pb "github.com/continusec/safeadmin/proto"
+	"github.com/continusec/safeadmin/pb"
 )
 
 // KeyDirOracle is an oracle that can produce a key by loading directly

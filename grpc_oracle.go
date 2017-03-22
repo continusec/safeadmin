@@ -19,9 +19,9 @@ limitations under the License.
 package safeadmin
 
 import (
-	context "golang.org/x/net/context"
+	"context"
 
-	pb "github.com/continusec/safeadmin/proto"
+	"github.com/continusec/safeadmin/pb"
 )
 
 // GRPCOracle represents a remote key oracle, that is one that we need to contact
