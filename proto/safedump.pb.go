@@ -56,6 +56,13 @@ func (m *GetPublicCertResponse) String() string            { return proto.Compac
 func (*GetPublicCertResponse) ProtoMessage()               {}
 func (*GetPublicCertResponse) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{1} }
 
+func (m *GetPublicCertResponse) GetDer() []byte {
+	if m != nil {
+		return m.Der
+	}
+	return nil
+}
+
 type DecryptSecretRequest struct {
 	Header *EncryptedHeader `protobuf:"bytes,1,opt,name=header" json:"header,omitempty"`
 }
@@ -81,6 +88,13 @@ func (m *DecryptSecretResponse) String() string            { return proto.Compac
 func (*DecryptSecretResponse) ProtoMessage()               {}
 func (*DecryptSecretResponse) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{3} }
 
+func (m *DecryptSecretResponse) GetKey() []byte {
+	if m != nil {
+		return m.Key
+	}
+	return nil
+}
+
 type EncryptedHeader struct {
 	SpkiFingerprint []byte `protobuf:"bytes,1,opt,name=spki_fingerprint,json=spkiFingerprint,proto3" json:"spki_fingerprint,omitempty"`
 	Ttl             int64  `protobuf:"varint,2,opt,name=ttl" json:"ttl,omitempty"`
@@ -91,6 +105,27 @@ func (m *EncryptedHeader) Reset()                    { *m = EncryptedHeader{} }
 func (m *EncryptedHeader) String() string            { return proto.CompactTextString(m) }
 func (*EncryptedHeader) ProtoMessage()               {}
 func (*EncryptedHeader) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{4} }
+
+func (m *EncryptedHeader) GetSpkiFingerprint() []byte {
+	if m != nil {
+		return m.SpkiFingerprint
+	}
+	return nil
+}
+
+func (m *EncryptedHeader) GetTtl() int64 {
+	if m != nil {
+		return m.Ttl
+	}
+	return 0
+}
+
+func (m *EncryptedHeader) GetEncryptedKey() []byte {
+	if m != nil {
+		return m.EncryptedKey
+	}
+	return nil
+}
 
 type ServerConfig struct {
 	ServerCertPath  string `protobuf:"bytes,1,opt,name=server_cert_path,json=serverCertPath" json:"server_cert_path,omitempty"`
@@ -105,6 +140,41 @@ func (m *ServerConfig) String() string            { return proto.CompactTextStri
 func (*ServerConfig) ProtoMessage()               {}
 func (*ServerConfig) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{5} }
 
+func (m *ServerConfig) GetServerCertPath() string {
+	if m != nil {
+		return m.ServerCertPath
+	}
+	return ""
+}
+
+func (m *ServerConfig) GetServerKeyPath() string {
+	if m != nil {
+		return m.ServerKeyPath
+	}
+	return ""
+}
+
+func (m *ServerConfig) GetListenBind() string {
+	if m != nil {
+		return m.ListenBind
+	}
+	return ""
+}
+
+func (m *ServerConfig) GetArchivedKeysDir() string {
+	if m != nil {
+		return m.ArchivedKeysDir
+	}
+	return ""
+}
+
+func (m *ServerConfig) GetListenProtocol() string {
+	if m != nil {
+		return m.ListenProtocol
+	}
+	return ""
+}
+
 type ClientConfig struct {
 	NoGrpcSecurity     bool   `protobuf:"varint,1,opt,name=no_grpc_security,json=noGrpcSecurity" json:"no_grpc_security,omitempty"`
 	UseSystemCaForGrpc bool   `protobuf:"varint,2,opt,name=use_system_ca_for_grpc,json=useSystemCaForGrpc" json:"use_system_ca_for_grpc,omitempty"`
@@ -116,6 +186,34 @@ func (m *ClientConfig) Reset()                    { *m = ClientConfig{} }
 func (m *ClientConfig) String() string            { return proto.CompactTextString(m) }
 func (*ClientConfig) ProtoMessage()               {}
 func (*ClientConfig) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{6} }
+
+func (m *ClientConfig) GetNoGrpcSecurity() bool {
+	if m != nil {
+		return m.NoGrpcSecurity
+	}
+	return false
+}
+
+func (m *ClientConfig) GetUseSystemCaForGrpc() bool {
+	if m != nil {
+		return m.UseSystemCaForGrpc
+	}
+	return false
+}
+
+func (m *ClientConfig) GetGrpcCert() string {
+	if m != nil {
+		return m.GrpcCert
+	}
+	return ""
+}
+
+func (m *ClientConfig) GetGrpcServer() string {
+	if m != nil {
+		return m.GrpcServer
+	}
+	return ""
+}
 
 func init() {
 	proto.RegisterType((*GetPublicCertRequest)(nil), "GetPublicCertRequest")
@@ -133,7 +231,7 @@ var _ grpc.ClientConn
 
 // This is a compile-time assertion to ensure that this generated file
 // is compatible with the grpc package it is being compiled against.
-const _ = grpc.SupportPackageIsVersion3
+const _ = grpc.SupportPackageIsVersion4
 
 // Client API for SafeDumpService service
 
@@ -229,7 +327,7 @@ var _SafeDumpService_serviceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: fileDescriptor0,
+	Metadata: "safedump.proto",
 }
 
 func init() { proto.RegisterFile("safedump.proto", fileDescriptor0) }
