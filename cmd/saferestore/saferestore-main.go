@@ -19,18 +19,24 @@ limitations under the License.
 package main
 
 import (
+	"flag"
 	"os"
 
 	"github.com/continusec/safeadmin"
 )
 
 func main() {
+	var fragments bool
+
+	flag.BoolVar(&fragments, "chunks", false, "If set, look for chunks and decode them rather than entire file")
+	flag.Parse()
+
 	config, err := safeadmin.LoadClientConfiguration()
 	if err != nil {
 		panic(err)
 	}
 
-	err = safeadmin.DecryptWithTTL(&safeadmin.GRPCOracle{Config: config}, os.Stdin, os.Stdout)
+	err = safeadmin.DecryptWithTTL(&safeadmin.GRPCOracle{Config: config}, os.Stdin, os.Stdout, fragments)
 	if err != nil {
 		panic(err)
 	}

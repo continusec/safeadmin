@@ -28,8 +28,10 @@ import (
 
 func main() {
 	var keys string
+	var fragments bool
 
 	flag.StringVar(&keys, "keys", "", "Directory containing the private keys")
+	flag.BoolVar(&fragments, "chunks", false, "If set, look for chunks and decode them rather than entire file")
 	flag.Parse()
 
 	if len(keys) == 0 {
@@ -45,7 +47,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	err = safeadmin.DecryptWithTTL(oracle, os.Stdin, os.Stdout)
+	err = safeadmin.DecryptWithTTL(oracle, os.Stdin, os.Stdout, fragments)
 	if err != nil {
 		log.Fatal(err)
 	}

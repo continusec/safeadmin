@@ -29,8 +29,10 @@ import (
 
 func main() {
 	var duration time.Duration
+	var fragment bool
 
 	flag.DurationVar(&duration, "for", 24*time.Hour, "Duration for which this data may be restored")
+	flag.BoolVar(&fragment, "chunk", false, "If set, base64 and put in a chunk suitable for use in a larger file such as a log")
 	flag.Parse()
 
 	config, err := safeadmin.LoadClientConfiguration()
@@ -49,7 +51,7 @@ func main() {
 
 	log.Println("Encrypting until:", ttl)
 
-	err = safeadmin.EncryptWithTTL(rsaPubKey, spki, ttl, os.Stdin, os.Stdout)
+	err = safeadmin.EncryptWithTTL(rsaPubKey, spki, ttl, os.Stdin, os.Stdout, fragment)
 	if err != nil {
 		panic(err)
 	}
