@@ -1,6 +1,6 @@
 /*
 
-Copyright 2016 Continusec Pty Ltd
+Copyright 2017 Continusec Pty Ltd
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -33,7 +33,7 @@ func main() {
 	flag.Parse()
 
 	if len(keys) == 0 {
-		log.Fatal("You must specify the directory containing the keys in order.")
+		log.Fatal("You must specify the directory containing the keys")
 	}
 
 	oracle := &safeadmin.KeyDirOracle{

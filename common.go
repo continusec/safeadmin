@@ -1,6 +1,6 @@
 /*
 
-Copyright 2016 Continusec Pty Ltd
+Copyright 2017 Continusec Pty Ltd
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,22 +19,14 @@ limitations under the License.
 package safeadmin
 
 import (
-	"crypto/aes"
-	"crypto/cipher"
-	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/binary"
 	"encoding/hex"
-	"errors"
-	"io"
 	"io/ioutil"
 	"log"
-	"path"
 	"path/filepath"
-	"sync"
 	"time"
 
 	context "golang.org/x/net/context"
@@ -47,290 +39,8 @@ import (
 	homedir "github.com/mitchellh/go-homedir"
 )
 
-var (
-	ErrBadCert                 = errors.New("Unable to understand baked-in cert")
-	ErrCertNotValidBefore      = errors.New("Cert is not valid before now")
-	ErrCertNotValidAfter       = errors.New("Cert is not after before now")
-	ErrCertNotRSA              = errors.New("Cert should be RSA algorithm")
-	ErrCertWontCast            = errors.New("Cert public key won't cast")
-	ErrUnexpectedLengthOfBlock = errors.New("Unexpected length of block")
-)
-
-func encrypt(key []byte, in io.Reader, out io.Writer) error {
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return err
-	}
-
-	iv := make([]byte, block.BlockSize())
-	_, err = io.ReadFull(rand.Reader, iv)
-	if err != nil {
-		return err
-	}
-
-	// IV is not a secret, write it out
-	_, err = out.Write(iv)
-	if err != nil {
-		return err
-	}
-
-	// And now write the rest...
-	_, err = io.Copy(&cipher.StreamWriter{
-		S: cipher.NewCTR(block, iv),
-		W: out,
-	}, in)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func decrypt(key []byte, in io.Reader, out io.Writer) error {
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return err
-	}
-
-	iv := make([]byte, block.BlockSize())
-	_, err = io.ReadFull(rand.Reader, iv)
-	if err != nil {
-		return err
-	}
-
-	// IV is not a secret, write it out
-	_, err = out.Write(iv)
-	if err != nil {
-		return err
-	}
-
-	// And now write the rest...
-	_, err = io.Copy(&cipher.StreamWriter{
-		S: cipher.NewCTR(block, iv),
-		W: out,
-	}, in)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-type EncryptHeader struct {
-	PublicKey       *rsa.PublicKey // so server can find the right private key
-	TTL             time.Time      // after which time the server requires intervention to decrypt
-	EncryptedAESKey []byte         // the encrypted key (OAEP)
-}
-
-func EncryptWithTTL(rsaPubKey *rsa.PublicKey, spki []byte, ttl time.Time, in io.Reader, out io.Writer) error {
-	ttlb := make([]byte, 8)
-	binary.BigEndian.PutUint64(ttlb, uint64(ttl.Unix()))
-
-	key := make([]byte, 32)
-	_, err := io.ReadFull(rand.Reader, key)
-	if err != nil {
-		return err
-	}
-
-	oaepResult, err := rsa.EncryptOAEP(sha256.New(), rand.Reader, rsaPubKey, key, ttlb)
-	if err != nil {
-		return err
-	}
-
-	gbs, err := proto.Marshal(&pb.EncryptedHeader{
-		Ttl:             ttl.Unix(),
-		EncryptedKey:    oaepResult,
-		SpkiFingerprint: spki,
-	})
-	if err != nil {
-		return err
-	}
-
-	// Length prefix the gob or we struggle to read it, since the decoder seems to be greedy
-	err = binary.Write(out, binary.BigEndian, uint64(len(gbs)))
-	if err != nil {
-		return err
-	}
-
-	_, err = out.Write(gbs)
-	if err != nil {
-		return err
-	}
-
-	err = encrypt(key, in, out)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-type Oracle interface {
-	GetPrivateKey(*pb.EncryptedHeader) ([]byte, error)
-}
-
-type KeyDirOracle struct {
-	KeyDir    string
-	IgnoreTTL bool
-
-	keyLock sync.Mutex
-	keys    map[string]*rsa.PrivateKey // hex spki sha256 hash to private key
-}
-
-func (kdo *KeyDirOracle) Init() error {
-	kdo.keys = make(map[string]*rsa.PrivateKey)
-	return nil
-}
-
-func (kdo *KeyDirOracle) PersistKey(certDer []byte, pkey *rsa.PrivateKey) error {
-	cert, err := x509.ParseCertificate(certDer)
-	if err != nil {
-		return err
-	}
-
-	hb := sha256.Sum256(cert.RawSubjectPublicKeyInfo)
-	spkiName := hex.EncodeToString(hb[:])
-
-	err = ioutil.WriteFile(path.Join(kdo.KeyDir, spkiName+".cert.der"), certDer, 0644)
-	if err != nil {
-		return err
-	}
-
-	err = ioutil.WriteFile(path.Join(kdo.KeyDir, spkiName+".key.der"), x509.MarshalPKCS1PrivateKey(pkey), 0600)
-	if err != nil {
-		return err
-	}
-
-	kdo.keyLock.Lock()
-	defer kdo.keyLock.Unlock()
-
-	kdo.keys[spkiName] = pkey
-
-	return nil
-}
-
-func (kdo *KeyDirOracle) LoadRsaPrivateKey(spki []byte) (*rsa.PrivateKey, error) {
-	kdo.keyLock.Lock()
-	defer kdo.keyLock.Unlock()
-
-	spkiName := hex.EncodeToString(spki)
-	rv, ok := kdo.keys[spkiName]
-	if ok {
-		return rv, nil
-	}
-
-	der, err := ioutil.ReadFile(path.Join(kdo.KeyDir, spkiName+".key.der"))
-	if err != nil {
-		return nil, err
-	}
-
-	pkey, err := x509.ParsePKCS1PrivateKey(der)
-	if err != nil {
-		return nil, ErrTTLExpired
-	}
-
-	kdo.keys[spkiName] = pkey
-	return pkey, nil
-}
-
-var (
-	ErrTTLExpired      = errors.New("TTL expired")
-	ErrUnableToLoadKey = errors.New("Unable to parse key")
-	ErrUnableToDecrypt = errors.New("Unable to decrypt")
-)
-
-func (kdo *KeyDirOracle) GetPrivateKey(eh *pb.EncryptedHeader) ([]byte, error) {
-	if !kdo.IgnoreTTL {
-		if time.Now().After(time.Unix(eh.Ttl, 0)) {
-			return nil, ErrTTLExpired
-		}
-	}
-
-	rsaKey, err := kdo.LoadRsaPrivateKey(eh.SpkiFingerprint)
-	if err != nil {
-		return nil, err
-	}
-
-	ttlb := make([]byte, 8)
-	binary.BigEndian.PutUint64(ttlb, uint64(eh.Ttl))
-
-	key, err := rsa.DecryptOAEP(sha256.New(), rand.Reader, rsaKey, eh.EncryptedKey, ttlb)
-	if err != nil {
-		return nil, ErrUnableToDecrypt
-	}
-
-	return key, nil
-}
-
-type GrpcOracle struct {
-	Config *pb.ClientConfig
-}
-
-func (gko *GrpcOracle) GetPrivateKey(eh *pb.EncryptedHeader) ([]byte, error) {
-	conn, err := CreateGrpcConn(gko.Config)
-	if err != nil {
-		return nil, err
-	}
-	defer conn.Close()
-	client := pb.NewSafeDumpServiceClient(conn)
-
-	resp, err := client.DecryptSecret(context.Background(), &pb.DecryptSecretRequest{Header: eh})
-	if err != nil {
-		return nil, err
-	}
-
-	return resp.Key, nil
-}
-
-func DecryptWithTTL(keyOracle Oracle, in io.Reader, out io.Writer) error {
-	var ehLen uint64
-	err := binary.Read(in, binary.BigEndian, &ehLen)
-	if err != nil {
-		return err
-	}
-
-	if ehLen > 100000 { // sanity check, should be much smaller
-		return ErrUnexpectedLengthOfBlock
-	}
-
-	ehb := make([]byte, ehLen)
-	_, err = in.Read(ehb)
-	if err != nil {
-		return err
-	}
-
-	eh := &pb.EncryptedHeader{}
-	err = proto.Unmarshal(ehb, eh)
-	if err != nil {
-		return err
-	}
-
-	key, err := keyOracle.GetPrivateKey(eh)
-	if err != nil {
-		return err
-	}
-
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return err
-	}
-
-	iv := make([]byte, aes.BlockSize)
-	amt, err := in.Read(iv)
-	if amt == len(iv) {
-		err = nil // we want to ignore EOF for now
-	}
-	if err != nil {
-		return err
-	}
-	_, err = io.Copy(out, &cipher.StreamReader{S: cipher.NewCTR(block, iv), R: in})
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
+// LoadClientConfiguration loads the client configuration file from the
+// standard location, "~/.safedump_config"
 func LoadClientConfiguration() (*pb.ClientConfig, error) {
 	hd, err := homedir.Dir()
 	if err != nil {
@@ -352,6 +62,8 @@ func LoadClientConfiguration() (*pb.ClientConfig, error) {
 	return conf, nil
 }
 
+// GetPublicKeyIfValidForNow parses an X509 DER certificate, and then if considered valid
+// for the specified time, returns the RSA public key, and the sha256 has of the SPKI.
 func GetPublicKeyIfValidForNow(der []byte, now time.Time) (*rsa.PublicKey, []byte, error) {
 	certificate, err := x509.ParseCertificate(der)
 	if err != nil {
@@ -375,6 +87,8 @@ func GetPublicKeyIfValidForNow(der []byte, now time.Time) (*rsa.PublicKey, []byt
 	return rsaPubKey, spki[:], nil
 }
 
+// GetCurrentCertificate checks to see if there is a valid cached certificate in "~/.safedump_cached_cert_for_<server hash>"
+// and if not, fetches one and write it out.
 func GetCurrentCertificate(config *pb.ClientConfig, now time.Time) (*rsa.PublicKey, []byte, error) {
 	hd, err := homedir.Dir()
 	if err != nil {
@@ -391,7 +105,7 @@ func GetCurrentCertificate(config *pb.ClientConfig, now time.Time) (*rsa.PublicK
 		} // else, we'll fetch a new one
 	} // else, we'll fetch a new one
 
-	conn, err := CreateGrpcConn(config)
+	conn, err := createGrpcConn(config)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -416,7 +130,7 @@ func GetCurrentCertificate(config *pb.ClientConfig, now time.Time) (*rsa.PublicK
 	return rv, spki, nil
 }
 
-func CreateGrpcConn(config *pb.ClientConfig) (*grpc.ClientConn, error) {
+func createGrpcConn(config *pb.ClientConfig) (*grpc.ClientConn, error) {
 	// Get certs
 	var dialOptions []grpc.DialOption
 	if config.NoGrpcSecurity {

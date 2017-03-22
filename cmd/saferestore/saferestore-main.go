@@ -1,6 +1,6 @@
 /*
 
-Copyright 2016 Continusec Pty Ltd
+Copyright 2017 Continusec Pty Ltd
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -30,7 +30,7 @@ func main() {
 		panic(err)
 	}
 
-	err = safeadmin.DecryptWithTTL(&safeadmin.GrpcOracle{Config: config}, os.Stdin, os.Stdout)
+	err = safeadmin.DecryptWithTTL(&safeadmin.GRPCOracle{Config: config}, os.Stdin, os.Stdout)
 	if err != nil {
 		panic(err)
 	}
