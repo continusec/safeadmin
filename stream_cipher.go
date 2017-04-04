@@ -29,8 +29,11 @@ import (
 	"encoding/binary"
 	"io"
 	"io/ioutil"
+	"log"
 	"regexp"
 	"time"
+
+	"golang.org/x/net/context"
 
 	"github.com/continusec/safeadmin/pb"
 	"github.com/golang/protobuf/proto"
@@ -42,11 +45,11 @@ var (
 	encryptedRegex = regexp.MustCompile("<ENCRYPTED:[^>]+>")
 )
 
-// EncryptWithTTL will generate a symmetric key, then encrypt this using the specified public key and TTL,
+// streamEncryptWithKey will generate a symmetric key, then encrypt this using the specified public key and TTL,
 // write this out, and then apply a stream cipher to in, copying to out. The number of bytes written to out
 // will be the same as those written to in with a small constant number of bytes added to it.
 // If chunk is set, then output is suitable for embedded in a larger file (e.g. log file)
-func EncryptWithTTL(rsaPubKey *rsa.PublicKey, spki []byte, ttl time.Time, in io.Reader, out io.Writer, chunk bool) error {
+func streamEncryptWithKey(rsaPubKey *rsa.PublicKey, spki []byte, ttl time.Time, in io.Reader, out io.Writer, chunk bool) error {
 	var output io.Writer
 	var encoder io.WriteCloser
 	if chunk {
@@ -140,39 +143,41 @@ func EncryptWithTTL(rsaPubKey *rsa.PublicKey, spki []byte, ttl time.Time, in io.
 // integrity or authentication.
 // If chunks is set, then look for chunks to decode as part of a larger file, instead of the whole stream.
 // For now, if fragments is set, then the entire input stream is read before processing commences.
-func DecryptWithTTL(keyOracle Oracle, in io.Reader, out io.Writer, chunks bool) error {
+func streamDecryptWithHeader(ctx context.Context, server pb.SafeDumpServiceServer, in io.Reader, out io.Writer, chunks, ignoreDateCheckOnClient bool) error {
 	if chunks {
-		dataIn, err := ioutil.ReadAll(in)
-		if err != nil {
-			return err
-		}
-		_, err = out.Write(encryptedRegex.ReplaceAllFunc(dataIn, func(b []byte) []byte {
-			decoded, err := base64.StdEncoding.DecodeString(string(b[len(fragmentStart) : len(b)-len(fragmentEnd)]))
-			if err != nil {
-				// Error base64 decoding encrypted chunk, returning encrypted instead since we can't report an error
-				return b
-			}
-
-			rv := &bytes.Buffer{}
-			err = decryptRaw(keyOracle, bytes.NewReader(decoded), rv)
-			if err != nil {
-				// Error decrytping chunk, returning encrypted instead since we can't report an error
-				return b
-			}
-
-			return rv.Bytes()
-		}))
-		if err != nil {
-			return err
-		}
-		return nil
-	} else {
-		return decryptRaw(keyOracle, in, out)
+		return findAndDecryptChunks(ctx, server, in, out, ignoreDateCheckOnClient)
 	}
-
+	return decryptRaw(ctx, server, in, out, ignoreDateCheckOnClient)
 }
 
-func decryptRaw(keyOracle Oracle, in io.Reader, out io.Writer) error {
+func findAndDecryptChunks(ctx context.Context, server pb.SafeDumpServiceServer, in io.Reader, out io.Writer, ignoreDateCheckOnClient bool) error {
+	dataIn, err := ioutil.ReadAll(in)
+	if err != nil {
+		return err
+	}
+	_, err = out.Write(encryptedRegex.ReplaceAllFunc(dataIn, func(b []byte) []byte {
+		decoded, err := base64.StdEncoding.DecodeString(string(b[len(fragmentStart) : len(b)-len(fragmentEnd)]))
+		if err != nil {
+			// Error base64 decoding encrypted chunk, returning encrypted instead since we can't report an error
+			return b
+		}
+
+		rv := &bytes.Buffer{}
+		err = decryptRaw(ctx, server, bytes.NewReader(decoded), rv, ignoreDateCheckOnClient)
+		if err != nil {
+			// Error decrypting chunk, returning encrypted instead since we can't report an error
+			return b
+		}
+
+		return rv.Bytes()
+	}))
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func decryptRaw(ctx context.Context, server pb.SafeDumpServiceServer, in io.Reader, out io.Writer, ignoreDateCheckOnClient bool) error {
 	var ehLen uint64
 	err := binary.Read(in, binary.BigEndian, &ehLen)
 	if err != nil {
@@ -180,7 +185,8 @@ func decryptRaw(keyOracle Oracle, in io.Reader, out io.Writer) error {
 	}
 
 	if ehLen > 100000 { // sanity check, should be much smaller
-		return ErrUnexpectedLengthOfBlock
+		log.Println("Unexpected encrypted header length. Are you sure this file has been encrypted with this tool?")
+		return ErrInvalidRequest
 	}
 
 	ehb := make([]byte, ehLen)
@@ -195,12 +201,23 @@ func decryptRaw(keyOracle Oracle, in io.Reader, out io.Writer) error {
 		return err
 	}
 
-	key, err := keyOracle.GetPrivateKey(eh)
+	// Check the date client side. This doesn't provide any additional security (the server checks this anyway),
+	// however by doin git here we can save unnecessary server load, and more so, we can return a better error
+	// code.
+	if time.Now().After(time.Unix(eh.Ttl, 0)) {
+		if ignoreDateCheckOnClient {
+			// send to server anyway, just in case they allow an override
+		} else {
+			return ErrInvalidDate
+		}
+	}
+
+	secret, err := server.DecryptSecret(ctx, &pb.DecryptSecretRequest{Header: eh})
 	if err != nil {
 		return err
 	}
 
-	block, err := aes.NewCipher(key)
+	block, err := aes.NewCipher(secret.Key)
 	if err != nil {
 		return err
 	}

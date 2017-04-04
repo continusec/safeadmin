@@ -40,7 +40,8 @@ message GetPublicCertRequest {
 }
 
 message GetPublicCertResponse {
-    bytes der = 1;
+    bytes der = 1; // DER bytes for X509. This contains the strict TTL of the cert. Don't encrypt anything with a TTL after the NVA
+    int64 ttl = 2; // If set, this means, please don't ask for a new cert until after this (unix time in seconds)
 }
 
 message DecryptSecretRequest {
@@ -63,11 +64,25 @@ message ServerConfig {
     string listen_bind = 3; // e.g. ":10001"
     string archived_keys_dir = 4;
     string listen_protocol = 5; // e.g "tcp4" or "tcp" or "tcp6"
+    string max_decryption_period = 6; // golang duration format, e.g. 7d
+    string certificate_rotation_period = 7; // golang duration format, e.g. 1d
+}
+
+enum ServerProtocol {
+    GRPC_PROTOCOL = 0;
+    HTTP_PROTOCOL = 1; // since GAE doesn't support GPRC
 }
 
 message ClientConfig {
-    bool no_grpc_security = 1;
-    bool use_system_ca_for_grpc = 2;
-    string grpc_cert = 3; // PEM
-    string grpc_server = 4; // host:port
+    bool no_grpc_security = 1; // for GRPC_PROTOCOL only
+    bool use_system_ca_for_grpc = 2; // for GRPC_PROTOCOL only
+    string grpc_cert = 3;   // PEM, for GRPC_PROTOCOL only
+    string grpc_server = 4; // host:port, for GRPC_PROTOCOL only
+    string http_base_url = 5; // for HTTP_PROTOCOL only
+    ServerProtocol protocol = 6;
+}
+
+message KeyAndCert {
+    GetPublicCertResponse cert = 1;
+    bytes key = 2; // DER bytes for PKCS1 RSA Private Key
 }

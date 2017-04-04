@@ -19,19 +19,11 @@ limitations under the License.
 package main
 
 import (
-	"crypto/rand"
-	"crypto/rsa"
-	"crypto/x509"
-	"errors"
 	"io/ioutil"
 	"log"
-	"math/big"
 	"net"
 	"os"
-	"sync"
 	"time"
-
-	context "golang.org/x/net/context"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -41,93 +33,12 @@ import (
 	"github.com/golang/protobuf/proto"
 )
 
-type SafeDumpServer struct {
-	Config    *pb.ServerConfig
-	keyOracle *safeadmin.KeyDirOracle
-
-	certLock      sync.Mutex
-	lastValidTime time.Time
-	currentCert   []byte
-}
-
-func (s *SafeDumpServer) Init() error {
-	s.keyOracle = &safeadmin.KeyDirOracle{KeyDir: s.Config.ArchivedKeysDir}
-	err := s.keyOracle.Init()
+func mustParseDuration(s string) time.Duration {
+	rv, err := time.ParseDuration(s)
 	if err != nil {
-		return err
+		log.Fatalf("Unable to parse duration: %s\n", err)
 	}
-
-	return nil
-}
-
-// Return DER bytes for a certificate that is valid, creating a new one
-// and writing to disk if needed. Cert will be valid for a short-time, e.g. 24 hours.
-func (s *SafeDumpServer) getCurrentCertificate() ([]byte, error) {
-	s.certLock.Lock()
-	defer s.certLock.Unlock()
-
-	now := time.Now()
-	if now.Before(s.lastValidTime) && len(s.currentCert) > 0 {
-		return s.currentCert, nil
-	}
-
-	// Else, we need to make one
-
-	// Generate a private key
-	pkey, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		return nil, err
-	}
-
-	// Use a barebone template
-	s.lastValidTime = now.Add(time.Hour * 24)
-	tmpl := &x509.Certificate{
-		SerialNumber:       big.NewInt(0),                        // appears to be a required element
-		NotBefore:          now.Add(-5 * time.Minute),            // allow for clock skew
-		NotAfter:           s.lastValidTime.Add(5 * time.Minute), // 24 hours should be long enough, give a little longer to allow for clock skew
-		SignatureAlgorithm: x509.SHA256WithRSA,
-	}
-
-	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &pkey.PublicKey, pkey)
-	if err != nil {
-		return nil, err
-	}
-
-	err = s.keyOracle.PersistKey(der, pkey)
-	if err != nil {
-		return nil, err
-	}
-
-	s.currentCert = der
-
-	return der, nil
-}
-
-func (s *SafeDumpServer) GetPublicCert(context.Context, *pb.GetPublicCertRequest) (*pb.GetPublicCertResponse, error) {
-	der, err := s.getCurrentCertificate()
-	if err != nil {
-		return nil, err
-	}
-
-	log.Println("Sending current certificate...")
-
-	return &pb.GetPublicCertResponse{Der: der}, nil
-}
-
-func (s *SafeDumpServer) DecryptSecret(ctx context.Context, req *pb.DecryptSecretRequest) (*pb.DecryptSecretResponse, error) {
-	if req.Header == nil {
-		return nil, errors.New("No header")
-	}
-
-	key, err := s.keyOracle.GetPrivateKey(req.Header)
-	if err != nil {
-		log.Println("WARNING: failed to decode:", err)
-		return nil, err
-	}
-
-	log.Println("Decoded key for someone...")
-
-	return &pb.DecryptSecretResponse{Key: key}, nil
+	return rv
 }
 
 func main() {
@@ -137,33 +48,31 @@ func main() {
 
 	confData, err := ioutil.ReadFile(os.Args[1])
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("Error reading server configuration: %s\n", err)
 	}
 
 	conf := &pb.ServerConfig{}
 	err = proto.UnmarshalText(string(confData), conf)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("Error parsing server configuration: %s\n", err)
 	}
 
 	tc, err := credentials.NewServerTLSFromFile(conf.ServerCertPath, conf.ServerKeyPath)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("Error reading server keys/certs: %s\n", err)
 	}
 
 	lis, err := net.Listen(conf.ListenProtocol, conf.ListenBind)
 	if err != nil {
-		log.Fatal(err)
-	}
-
-	sds := &SafeDumpServer{Config: conf}
-	err = sds.Init()
-	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("Error establishing server listener: %s\n", err)
 	}
 
 	grpcServer := grpc.NewServer(grpc.Creds(tc))
-	pb.RegisterSafeDumpServiceServer(grpcServer, sds)
+	pb.RegisterSafeDumpServiceServer(grpcServer, &safeadmin.SafeDumpServer{
+		Storage:                   &safeadmin.FilesystemPersistence{Dir: conf.ArchivedKeysDir},
+		MaxDecryptionPeriod:       mustParseDuration(conf.MaxDecryptionPeriod),
+		CertificateRotationPeriod: mustParseDuration(conf.CertificateRotationPeriod),
+	})
 
 	log.Println("Serving...")
 	grpcServer.Serve(lis)

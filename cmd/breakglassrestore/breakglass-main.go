@@ -28,27 +28,30 @@ import (
 
 func main() {
 	var keys string
-	var fragments bool
+	var chunks bool
 
-	flag.StringVar(&keys, "keys", "", "Directory containing the private keys")
-	flag.BoolVar(&fragments, "chunks", false, "If set, look for chunks and decode them rather than entire file")
+	flag.StringVar(&keys, "keys", "", "Directory containing the servesafedump storage")
+	flag.BoolVar(&chunks, "chunks", false, "If set, look for chunks and decode them rather than entire file")
 	flag.Parse()
 
 	if len(keys) == 0 {
-		log.Fatal("You must specify the directory containing the keys")
+		log.Fatal("You must specify the directory containing the serversafedump storage")
 	}
 
-	oracle := &safeadmin.KeyDirOracle{
-		KeyDir:    keys,
-		IgnoreTTL: true, // yes we are breaking glass
+	client := &safeadmin.SafeDumpClient{
+		Server: &safeadmin.SafeDumpServer{
+			Storage: &safeadmin.FilesystemPersistence{
+				Dir:       keys,
+				Immutable: true,
+			},
+			OverrideDateChecks: true,
+		},
+		SendKnownBadDateToServer: true,
 	}
-	err := oracle.Init()
-	if err != nil {
-		log.Fatal(err)
-	}
+	defer client.Close() // should be a no-op
 
-	err = safeadmin.DecryptWithTTL(oracle, os.Stdin, os.Stdout, fragments)
+	err := client.DecryptWithTTL(os.Stdin, os.Stdout, chunks)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("Error decrypting: %s\n", err)
 	}
 }

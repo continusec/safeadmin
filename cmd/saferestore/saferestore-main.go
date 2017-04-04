@@ -20,24 +20,31 @@ package main
 
 import (
 	"flag"
+	"log"
 	"os"
 
 	"github.com/continusec/safeadmin"
 )
 
 func main() {
-	var fragments bool
+	var chunks bool
 
-	flag.BoolVar(&fragments, "chunks", false, "If set, look for chunks and decode them rather than entire file")
+	flag.BoolVar(&chunks, "chunks", false, "If set, look for chunks and decode them rather than entire file")
 	flag.Parse()
 
-	config, err := safeadmin.LoadClientConfiguration()
+	client, err := safeadmin.CreateClientFromConfiguration()
 	if err != nil {
-		panic(err)
+		log.Fatalf("Error loading configuration: %s\n", err)
 	}
+	defer client.Close()
 
-	err = safeadmin.DecryptWithTTL(&safeadmin.GRPCOracle{Config: config}, os.Stdin, os.Stdout, fragments)
-	if err != nil {
-		panic(err)
+	err = client.DecryptWithTTL(os.Stdin, os.Stdout, chunks)
+	switch err {
+	case nil:
+	// all good
+	case safeadmin.ErrInvalidDate:
+		log.Fatalf("Encryption period has expired for this file. The server is unable to provide a decryption key. If using a private server, contact your administrator to request a manual override.")
+	default:
+		log.Fatalf("Error decrypting: %s\n", err)
 	}
 }

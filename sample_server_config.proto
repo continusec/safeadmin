@@ -12,8 +12,12 @@ server_cert_path: "grpc-cert.pem"
 server_key_path: "grpc-key.pem"
 
 # New certificates and keys will be dropped into this directory before use
-# You probably want to delete old ones to render dumped files unusable
-# <SPKI, sha256, in hex>.key.der
-# <SPKI, sha256, in hex>_YYYY-MM-DD.cert.der (date in UTC, informational)
 archived_keys_dir: "/tmp/certs"
 
+# How long will the server allow decryption of keys? (irrespective of the TTL in the header)
+# (Note that due to rotation periods, the actual max for a client will be between this and
+# this + the rotation period)
+max_decryption_period: "168h"
+
+# How often will the server rotate the cert?
+certificate_rotation_period: "24h"

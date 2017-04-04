@@ -20,41 +20,46 @@ package safeadmin
 
 import (
 	"errors"
+	"io"
+	"time"
+
+	"golang.org/x/net/context"
 
 	"github.com/continusec/safeadmin/pb"
 )
 
 var (
-	// ErrBadCert means we are unable to parse the certificate
-	ErrBadCert = errors.New("Unable to understand baked-in cert")
+	// ErrStorageKeyNotFound returned when object not found in storage
+	ErrStorageKeyNotFound = errors.New("ErrStorageKeyNotFound")
 
-	// ErrCertNotValidBefore means certificate is not valid yet
-	ErrCertNotValidBefore = errors.New("Cert is not valid before now")
+	// ErrInvalidDate returned when the date is a reason why we won't decrypt
+	ErrInvalidDate = errors.New("ErrInvalidDate")
 
-	// ErrCertNotValidAfter means certificate has expired
-	ErrCertNotValidAfter = errors.New("Cert is not after before now")
+	// ErrInvalidRequest returned when an invalid request is received.
+	ErrInvalidRequest = errors.New("ErrInvalidRequest")
 
-	// ErrCertNotRSA means certificate is not using RSA algorithm
-	ErrCertNotRSA = errors.New("Cert should be RSA algorithm")
+	// ErrInternalError means that an unexpected error occurred.
+	ErrInternalError = errors.New("ErrInternalError")
 
-	// ErrCertWontCast means certifcate won't cast to the type we expect
-	ErrCertWontCast = errors.New("Cert public key won't cast")
-
-	// ErrUnexpectedLengthOfBlock means we have the wrong block length
-	ErrUnexpectedLengthOfBlock = errors.New("Unexpected length of block")
-
-	// ErrTTLExpired means the TTL has expired for a key
-	ErrTTLExpired = errors.New("TTL expired")
-
-	// ErrUnableToLoadKey means we are unable to parse a key
-	ErrUnableToLoadKey = errors.New("Unable to parse key")
-
-	// ErrUnableToDecrypt means we are unable to decrypt the data
-	ErrUnableToDecrypt = errors.New("Unable to decrypt")
+	// ErrInvalidConfig means the configuration is not supported.
+	ErrInvalidConfig = errors.New("ErrInvalidConfig")
 )
 
-// Oracle defines an object that is capable of extracted the private key material
-// from an encrypted header. Typically this involves an RPC to a server.
-type Oracle interface {
-	GetPrivateKey(*pb.EncryptedHeader) ([]byte, error)
+// SafeDumpPersistence is an abstraction for a persistence layer
+type SafeDumpPersistence interface {
+	// Load returns value if found, nil otherwise
+	Load(ctx context.Context, key []byte) ([]byte, error)
+
+	// Save sets value
+	// The TTL is a suggestion - it is up to the persistence layer whether it chooses to retain longer
+	Save(ctx context.Context, key, value []byte, ttl time.Time) error
+}
+
+// SafeDumpServiceClient is to combine a Closer with a Server (which is bascially the same as client)
+type SafeDumpServiceClient interface {
+	pb.SafeDumpServiceServer
+	io.Closer
+
+	// SourceName returns the name of the serving we are connected to. Used to key cached certs.
+	SourceName() string
 }
