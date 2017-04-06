@@ -13,8 +13,9 @@ import (
 )
 
 func init() {
+	persistenceLayer := &GoogleCloudDatastorePersistenceLayer{}
 	server := &safeadmin.SafeDumpServer{
-		Storage:                   &GoogleCloudDatastorePersistenceLayer{},
+		Storage:                   persistenceLayer,
 		MaxDecryptionPeriod:       time.Hour * 24 * 7,
 		CertificateRotationPeriod: time.Hour * 24,
 	}
@@ -31,6 +32,12 @@ func init() {
 		if commonStart(w, r, req) {
 			resp, err := server.DecryptSecret(appengine.NewContext(r), req)
 			commonEnd(w, resp, err)
+		}
+	})
+	http.HandleFunc("/tasks/PurgeOldKeys", func(w http.ResponseWriter, r *http.Request) {
+		err := persistenceLayer.PurgeOldKeys(appengine.NewContext(r))
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
 		}
 	})
 }

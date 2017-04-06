@@ -109,6 +109,34 @@ Alternatively, if you have a real certificate (not self-signed), replace `grpc_c
 Now, happily pipe to/from `safedump` and `saferestore`.
 
 
+## Developer Notes
+
+To rebuild the protobuf files:
+
+```bash
+rm -rf pb
+mkdir pb
+protoc --go_out=plugins=grpc:pb safedump.proto
+```
+
+To build all binaries:
+
+```bash
+go install github.com/continusec/safeadmin/cmd/{safedump,saferestore,servesafedump,breakglassrestore}
+```
+
+To run the local GAE development server:
+
+```bash
+goapp serve cmd/gaesafedumpserver
+```
+
+To deploy the GAE app:
+
+```bash
+goapp deploy cmd/gaesafedumpserver
+```
+
 # FAQ
 
 ## How does `safedump` and `saferestore` authenticate to the server?

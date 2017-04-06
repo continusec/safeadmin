@@ -20,7 +20,10 @@ package safeadmin
 
 import (
 	"io/ioutil"
+	"log"
 	"path/filepath"
+
+	"os"
 
 	"github.com/continusec/safeadmin/pb"
 	"github.com/golang/protobuf/proto"
@@ -36,14 +39,20 @@ func CreateClientFromConfiguration() (*SafeDumpClient, error) {
 	}
 	path := filepath.Join(hd, ".safedump_config")
 
-	confData, err := ioutil.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-
 	conf := &pb.ClientConfig{}
-	err = proto.UnmarshalText(string(confData), conf)
-	if err != nil {
+
+	confData, err := ioutil.ReadFile(path)
+	switch {
+	case err == nil:
+		err = proto.UnmarshalText(string(confData), conf)
+		if err != nil {
+			return nil, err
+		}
+	case os.IsNotExist(err): // default to public key server
+		log.Println("No configuration file file, default to using public key server")
+		conf.Protocol = pb.ServerProtocol_HTTP_PROTOCOL
+		conf.HttpBaseUrl = "https://safedump-public-key-server.appspot.com"
+	default:
 		return nil, err
 	}
 

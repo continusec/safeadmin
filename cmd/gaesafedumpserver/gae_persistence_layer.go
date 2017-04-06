@@ -19,7 +19,8 @@ type safedumpObject struct {
 }
 
 const (
-	dsKind = "safedumpObject"
+	dsKind          = "safedumpObject"
+	maxQueryResults = 1000 // as recommended by GAE. We expect to only get 1-2 at once, so this shouldn't be a big deal
 )
 
 // GoogleCloudDatastorePersistenceLayer persists objects in Google Cloud Datastore,
@@ -49,4 +50,16 @@ func (g *GoogleCloudDatastorePersistenceLayer) Save(ctx context.Context, key, va
 		TTL:   ttl.Unix(),
 	})
 	return err
+}
+
+// PurgeOldKeys will remove data that is no longer needed
+func (g *GoogleCloudDatastorePersistenceLayer) PurgeOldKeys(ctx context.Context) error {
+	keys, err := datastore.NewQuery(dsKind).KeysOnly().Filter("TTL <", time.Now().Unix()).Limit(maxQueryResults).GetAll(ctx, nil)
+	if err != nil {
+		return err
+	}
+	if len(keys) == 0 {
+		return nil
+	}
+	return nds.DeleteMulti(ctx, keys)
 }
