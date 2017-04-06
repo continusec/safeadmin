@@ -42,7 +42,7 @@ func init() {
 	})
 	http.HandleFunc("/tasks/CronPurge", func(w http.ResponseWriter, r *http.Request) {
 		ctx := appengine.NewContext(r)
-		err := server.CronPurge(ctx, time.Now())
+		err := server.CronPurge(ctx)
 		if err != nil {
 			log.Errorf(ctx, "Error running cron: %s", err)
 			w.WriteHeader(http.StatusInternalServerError)
