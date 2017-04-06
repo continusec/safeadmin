@@ -88,3 +88,9 @@ message KeyAndCert {
     GetPublicCertResponse cert = 1;
     bytes key = 2; // DER bytes for PKCS1 RSA Private Key
 }
+
+message PersistedObject {
+    int64 ttl = 1;
+    bytes key = 2;
+    bytes value = 3;
+}

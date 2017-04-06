@@ -19,7 +19,6 @@ limitations under the License.
 package safeadmin
 
 import (
-	"encoding/binary"
 	"encoding/hex"
 	"io/ioutil"
 	"log"
@@ -28,11 +27,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/continusec/safeadmin/pb"
+	"github.com/golang/protobuf/proto"
+
 	"golang.org/x/net/context"
 )
 
 const (
-	fnamePrefix = "sdd"
+	fnamePrefix = "sdc-"
 )
 
 // FilesystemPersistence write key/values to the specified directory.
@@ -46,20 +48,22 @@ type FilesystemPersistence struct {
 
 // Load returns value if found, nil otherwise. It should ignore the TTL
 func (f *FilesystemPersistence) Load(ctx context.Context, key []byte) ([]byte, error) {
-	rv, err := ioutil.ReadFile(filepath.Join(f.Dir, fnamePrefix+hex.EncodeToString(key)))
+	bo, err := ioutil.ReadFile(filepath.Join(f.Dir, fnamePrefix+hex.EncodeToString(key)))
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, ErrStorageKeyNotFound
 		}
 		return nil, err
 	}
-	// Check we have the TTL
-	if len(rv) < 8 {
-		return nil, ErrInternalError
+
+	var rv pb.PersistedObject
+	err = proto.Unmarshal(bo, &rv)
+	if err != nil {
+		return nil, err
 	}
 
-	// We don't actually care what it is though
-	return rv[8:], nil
+	// Ignore what the TTL actually is though
+	return rv.Value, nil
 }
 
 // Save sets value, as atomically as we can. File will be saved with default umask
@@ -70,8 +74,18 @@ func (f *FilesystemPersistence) Save(ctx context.Context, key, value []byte, ttl
 		return ErrInvalidConfig
 	}
 
+	// Serialize
+	bo, err := proto.Marshal(&pb.PersistedObject{
+		Key:   key,
+		Value: value,
+		Ttl:   ttl.Unix(),
+	})
+	if err != nil {
+		return err
+	}
+
 	// Create dir if not exists
-	_, err := os.Stat(f.Dir)
+	_, err = os.Stat(f.Dir)
 	if err != nil {
 		if os.IsNotExist(err) {
 			err = os.MkdirAll(f.Dir, 0700)
@@ -89,16 +103,8 @@ func (f *FilesystemPersistence) Save(ctx context.Context, key, value []byte, ttl
 		return err
 	}
 
-	// Write out TTL first
-	err = binary.Write(tf, binary.BigEndian, uint64(ttl.Unix()))
-	if err != nil {
-		tf.Close()           // ignore failure
-		os.Remove(tf.Name()) // ignore failure
-		return err
-	}
-
 	// Write it out
-	_, err = tf.Write(value)
+	_, err = tf.Write(bo)
 	if err != nil {
 		tf.Close()           // ignore failure
 		os.Remove(tf.Name()) // ignore failure
@@ -122,23 +128,20 @@ func (f *FilesystemPersistence) Save(ctx context.Context, key, value []byte, ttl
 	return nil
 }
 
-func deleteIfOld(fpath string, now uint64) error {
-	// Open the file
-	f, err := os.Open(fpath)
+func deleteIfOld(fpath string, now int64) error {
+	bo, err := ioutil.ReadFile(fpath)
 	if err != nil {
 		return err
 	}
 
-	// Read TTL
-	var ttl uint64
-	err = binary.Read(f, binary.BigEndian, &ttl)
-	f.Close() // no matter what, we close the file now and don't care if it doesn't work
+	var rv pb.PersistedObject
+	err = proto.Unmarshal(bo, &rv)
 	if err != nil {
 		return err
 	}
 
 	// If too old, delete it
-	if ttl < now {
+	if rv.Ttl < now {
 		return os.Remove(fpath)
 	}
 
@@ -151,7 +154,7 @@ func (f *FilesystemPersistence) Purge(ctx context.Context, now time.Time) error 
 	if err != nil {
 		return err
 	}
-	nowInt := uint64(now.Unix())
+	nowInt := now.Unix()
 	for _, fi := range files {
 		name := fi.Name()
 		if strings.HasPrefix(name, fnamePrefix) {

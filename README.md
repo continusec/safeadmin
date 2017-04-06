@@ -252,10 +252,10 @@ mkdir pb
 protoc --go_out=plugins=grpc:pb safedump.proto
 ```
 
-To rebuild all non-GAE binaries:
+To rebuild all non-GAE binaries and compile the GAE code:
 
 ```bash
-go install github.com/continusec/safeadmin/cmd/{safedump,saferestore,servesafedump,breakglassrestore}
+go install github.com/continusec/safeadmin/cmd/{safedump,saferestore,servesafedump,breakglassrestore,gaesafedumpserver}
 ```
 
 # FAQ
@@ -278,6 +278,10 @@ No. Even when using the public key server, the only data sent to the public key 
 Yes. In most instances you will want to do so, as it provides lower latency, and means that an someone with receipt of an encrypted file will also need access to your private key server in order to decrypt it. It also allows your administrators the ability to recover encrypted files that are past their TTL, but prior to key purging, which, by design, the public key server will not do.
 
 The public key server is primarily intended for demonstrative purposes and we make no guarantees or warranties about any aspect of its operation.
+
+## What files can I clean up?
+
+`safedump` will write cached public certificates to the `~/.safedump_cache/` directory. If you only over connect to one server, then there should be only one small file in there. This directory can be safely deleted at any time, however is retained for convenience, because if a valid certificate is found there, running `safedump` can be achieved without needing to contact the server at all.
 
 # Contact information
 
