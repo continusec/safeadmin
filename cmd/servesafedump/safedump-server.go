@@ -68,11 +68,15 @@ func main() {
 	}
 
 	grpcServer := grpc.NewServer(grpc.Creds(tc))
-	pb.RegisterSafeDumpServiceServer(grpcServer, &safeadmin.SafeDumpServer{
+	server := &safeadmin.SafeDumpServer{
 		Storage:                   &safeadmin.FilesystemPersistence{Dir: conf.ArchivedKeysDir},
 		MaxDecryptionPeriod:       mustParseDuration(conf.MaxDecryptionPeriod),
 		CertificateRotationPeriod: mustParseDuration(conf.CertificateRotationPeriod),
-	})
+		PurgeOldKeys:              conf.PurgeOldKeys,
+		KeyRetentionPeriod:        mustParseDuration(conf.KeyRetentionPeriod),
+	}
+	server.BeginPurgeCron() // start the cron before serving
+	pb.RegisterSafeDumpServiceServer(grpcServer, server)
 
 	log.Println("Serving...")
 	grpcServer.Serve(lis)

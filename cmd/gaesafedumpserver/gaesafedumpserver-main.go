@@ -1,6 +1,7 @@
 package gaesafedumpserver
 
 import (
+	"context"
 	"net/http"
 	"time"
 
@@ -10,33 +11,39 @@ import (
 	"github.com/continusec/safeadmin/pb"
 	"github.com/golang/protobuf/proto"
 	"google.golang.org/appengine"
+	"google.golang.org/appengine/log"
 )
 
 func init() {
-	persistenceLayer := &GoogleCloudDatastorePersistenceLayer{}
 	server := &safeadmin.SafeDumpServer{
-		Storage:                   persistenceLayer,
+		Storage:                   &GoogleCloudDatastorePersistenceLayer{},
 		MaxDecryptionPeriod:       time.Hour * 24 * 7,
 		CertificateRotationPeriod: time.Hour * 24,
+		PurgeOldKeys:              true,
+		KeyRetentionPeriod:        time.Duration(0), // don't store for any additional time
 	}
 
 	http.HandleFunc("/simpleRPC/GetPublicCert", func(w http.ResponseWriter, r *http.Request) {
+		ctx := appengine.NewContext(r)
 		req := &pb.GetPublicCertRequest{}
-		if commonStart(w, r, req) {
-			resp, err := server.GetPublicCert(appengine.NewContext(r), req)
-			commonEnd(w, resp, err)
+		if commonStart(ctx, w, r, req) {
+			resp, err := server.GetPublicCert(ctx, req)
+			commonEnd(ctx, w, resp, err)
 		}
 	})
 	http.HandleFunc("/simpleRPC/DecryptSecret", func(w http.ResponseWriter, r *http.Request) {
+		ctx := appengine.NewContext(r)
 		req := &pb.DecryptSecretRequest{}
-		if commonStart(w, r, req) {
-			resp, err := server.DecryptSecret(appengine.NewContext(r), req)
-			commonEnd(w, resp, err)
+		if commonStart(ctx, w, r, req) {
+			resp, err := server.DecryptSecret(ctx, req)
+			commonEnd(ctx, w, resp, err)
 		}
 	})
-	http.HandleFunc("/tasks/PurgeOldKeys", func(w http.ResponseWriter, r *http.Request) {
-		err := persistenceLayer.PurgeOldKeys(appengine.NewContext(r))
+	http.HandleFunc("/tasks/CronPurge", func(w http.ResponseWriter, r *http.Request) {
+		ctx := appengine.NewContext(r)
+		err := server.CronPurge(ctx, time.Now())
 		if err != nil {
+			log.Errorf(ctx, "Error running cron: %s", err)
 			w.WriteHeader(http.StatusInternalServerError)
 		}
 	})
@@ -45,7 +52,7 @@ func init() {
 // commonStart reads the POST data, and unmarshals into the given message
 // Returns True if ready to go. If error occurs, error message is sent
 // and returns False
-func commonStart(w http.ResponseWriter, r *http.Request, req proto.Message) bool {
+func commonStart(ctx context.Context, w http.ResponseWriter, r *http.Request, req proto.Message) bool {
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusBadRequest)
 		return false
@@ -53,12 +60,14 @@ func commonStart(w http.ResponseWriter, r *http.Request, req proto.Message) bool
 	defer r.Body.Close()
 	input, err := ioutil.ReadAll(r.Body)
 	if err != nil {
+		log.Errorf(ctx, "Error reading request: %s", err)
 		w.WriteHeader(http.StatusBadRequest)
 		return false
 	}
 
 	err = proto.Unmarshal(input, req)
 	if err != nil {
+		log.Errorf(ctx, "Error unmarshaling: %s", err)
 		w.WriteHeader(http.StatusBadRequest)
 		return false
 	}
@@ -67,7 +76,7 @@ func commonStart(w http.ResponseWriter, r *http.Request, req proto.Message) bool
 }
 
 // commonEnd marshals the proto, and writes it out, if the given error is clean
-func commonEnd(w http.ResponseWriter, resp proto.Message, err error) {
+func commonEnd(ctx context.Context, w http.ResponseWriter, resp proto.Message, err error) {
 	switch err {
 	case nil:
 	// all good
@@ -76,12 +85,14 @@ func commonEnd(w http.ResponseWriter, resp proto.Message, err error) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	default:
+		log.Errorf(ctx, "Error decrypting: %s", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
 	output, err := proto.Marshal(resp)
 	if err != nil {
+		log.Errorf(ctx, "Error marshaling: %s", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}

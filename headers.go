@@ -51,8 +51,12 @@ type SafeDumpPersistence interface {
 	Load(ctx context.Context, key []byte) ([]byte, error)
 
 	// Save sets value
-	// The TTL is a suggestion - it is up to the persistence layer whether it chooses to retain longer
+	// The TTL is a suggestion - and is used for the cleanup function
+	// It should not affect loads.
 	Save(ctx context.Context, key, value []byte, ttl time.Time) error
+
+	// Delete all content with TTL before this time.
+	Purge(ctx context.Context, now time.Time) error
 }
 
 // SafeDumpServiceClient is to combine a Closer with a Server (which is bascially the same as client)

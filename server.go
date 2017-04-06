@@ -53,6 +53,13 @@ type SafeDumpServer struct {
 	// OverrideDateChecks, if set, will skip date checks on TTL. This should only be used with breakglass tools that operate on the server directly
 	OverrideDateChecks bool
 
+	// PurgeOldKeys deletes old keys automatically (assuming cron is started)
+	PurgeOldKeys bool
+
+	// KeyRetentionPeriod is the period after a key expires that it will be kept anyway
+	// Only used if PurgeOldKeys is set
+	KeyRetentionPeriod time.Duration
+
 	// Cache
 	certLock          sync.Mutex
 	cachedCurrentCert *pb.GetPublicCertResponse
@@ -305,4 +312,42 @@ func (s *SafeDumpServer) Close() error {
 // SourceName is used to key cache data. Ought not be called in this context
 func (s *SafeDumpServer) SourceName() string {
 	return ""
+}
+
+// CronPurge should be called regularly
+func (s *SafeDumpServer) CronPurge(ctx context.Context) error {
+	log.Println("Running daily cron...")
+
+	// First purge anything we have that is older than the retention period
+	if s.PurgeOldKeys {
+		cutoff := time.Now().Add(s.KeyRetentionPeriod)
+		log.Printf("Purging keys older than: %s\n", cutoff.Format(time.RFC3339))
+		err := s.Storage.Purge(ctx, cutoff)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Clear out local cache
+	s.certLock.Lock()
+	s.cachedCurrentCert = nil
+	s.certLock.Unlock()
+
+	s.keysLock.Lock()
+	s.cachedKeys = nil
+	s.keysLock.Unlock()
+
+	return nil
+}
+
+// BeginPurgeCron will start go funcs the purge cron job
+// We run as often as the CertificateRotationPeriod
+func (s *SafeDumpServer) BeginPurgeCron() {
+	go func() {
+		err := s.CronPurge(context.Background())
+		if err != nil {
+			log.Printf("Error running CronPurge: %s\n", err)
+		}
+		time.Sleep(s.CertificateRotationPeriod)
+	}()
 }

@@ -52,9 +52,9 @@ func (g *GoogleCloudDatastorePersistenceLayer) Save(ctx context.Context, key, va
 	return err
 }
 
-// PurgeOldKeys will remove data that is no longer needed
-func (g *GoogleCloudDatastorePersistenceLayer) PurgeOldKeys(ctx context.Context) error {
-	keys, err := datastore.NewQuery(dsKind).KeysOnly().Filter("TTL <", time.Now().Unix()).Limit(maxQueryResults).GetAll(ctx, nil)
+// Purge will remove data that is no longer needed
+func (g *GoogleCloudDatastorePersistenceLayer) Purge(ctx context.Context, now time.Time) error {
+	keys, err := datastore.NewQuery(dsKind).KeysOnly().Filter("TTL <", now.Unix()).Limit(maxQueryResults).GetAll(ctx, nil)
 	if err != nil {
 		return err
 	}

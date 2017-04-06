@@ -64,8 +64,10 @@ message ServerConfig {
     string listen_bind = 3; // e.g. ":10001"
     string archived_keys_dir = 4;
     string listen_protocol = 5; // e.g "tcp4" or "tcp" or "tcp6"
-    string max_decryption_period = 6; // golang duration format, e.g. 7d
-    string certificate_rotation_period = 7; // golang duration format, e.g. 1d
+    string max_decryption_period = 6; // golang duration format, e.g. 168h
+    string certificate_rotation_period = 7; // golang duration format, e.g. 24h
+    bool purge_old_keys = 8; // if set, delete old key data automatically
+    string key_retention_period = 9; // golang duration format, how long after a key is expired should we keep it
 }
 
 enum ServerProtocol {
