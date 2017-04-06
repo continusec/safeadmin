@@ -41,7 +41,7 @@ saferestore < dump_mydb_2016-11-01.sql.bz2 | bzcat | mysql mydb
 2. Install the `safedump` and `saferestore` binaries:
 
 	```bash
-	go get github.com/continusec/safeadmin/cmd/{safedump,saferestore}
+	go get -u github.com/continusec/safeadmin/cmd/{safedump,saferestore}
 	```
 
 3. Done! Verify it works end-to-end:
@@ -123,7 +123,7 @@ Unlike the public key server, the gRPC server does not automatically purge old p
 1. Grab the binary:
 
 	```bash
-	go get github.com/continusec/safeadmin/cmd/servesafedump
+	go get -u github.com/continusec/safeadmin/cmd/servesafedump
 	```
 
 2. Create a server configuration file:
