@@ -20,7 +20,6 @@ package safeadmin
 
 import (
 	"io/ioutil"
-	"log"
 	"path/filepath"
 
 	"os"
@@ -49,7 +48,6 @@ func CreateClientFromConfiguration() (*SafeDumpClient, error) {
 			return nil, err
 		}
 	case os.IsNotExist(err): // default to public key server
-		log.Println("No configuration file file, default to using public key server")
 		conf.Protocol = pb.ServerProtocol_HTTP_PROTOCOL
 		conf.HttpBaseUrl = "https://safedump-public-key-server.appspot.com"
 	default:

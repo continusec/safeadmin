@@ -28,8 +28,10 @@ import (
 
 func main() {
 	var chunks bool
+	var sendAnyway bool
 
 	flag.BoolVar(&chunks, "chunks", false, "If set, look for chunks and decode them rather than entire file")
+	flag.BoolVar(&sendAnyway, "skip-local-check", false, "If set, skip client date check and send to server anyway")
 	flag.Parse()
 
 	client, err := safeadmin.CreateClientFromConfiguration()
@@ -37,6 +39,10 @@ func main() {
 		log.Fatalf("Error loading configuration: %s\n", err)
 	}
 	defer client.Close()
+
+	if sendAnyway {
+		client.SendKnownBadDateToServer = true
+	}
 
 	err = client.DecryptWithTTL(os.Stdin, os.Stdout, chunks)
 	switch err {

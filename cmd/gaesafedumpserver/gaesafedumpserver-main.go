@@ -68,7 +68,14 @@ func commonStart(w http.ResponseWriter, r *http.Request, req proto.Message) bool
 
 // commonEnd marshals the proto, and writes it out, if the given error is clean
 func commonEnd(w http.ResponseWriter, resp proto.Message, err error) {
-	if err != nil {
+	switch err {
+	case nil:
+	// all good
+	case safeadmin.ErrInvalidDate:
+		// Send different response on this, since it's a "normal" error
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	default:
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
