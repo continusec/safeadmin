@@ -108,53 +108,6 @@ Takes as input the header with the SPKI fingerprint, TTL and encrypted OAEP resu
 When `saferestore` runs, it reads from `stdin` the header as written by `safedump`, sends this header only to the server as configured in `~/.safedump_config` (defaulting to the public key server, gets the private key used to encrypt back, and then uses this to decrypt the data stream which it writes to `stdout`.
 
 
-# Client Configuration
-
-(Skip this section unless you are running your own server)
-
-Client configuration should be placed in `~/.safedump_config` with the following contents:
-
-## gRPC protocol
-
-For gRPC protocol (recommended for private servers):
-
-```proto
-protocol: GRPC_PROTOCOL
-
-# host:port of grpc servee
-grpc_server: "safedump.example.com:10001"
-
-# One of the following 3 options should be used:
-
-# Option 1: If your gRPC certificate is signed by a CA trusted by the clients operating system, set this:
-use_system_ca_for_grpc: true
-
-# Option 2: If using a self-signed gRPC certificate, then include the full PEM encoded certificate for the gRPC server here
-grpc_cert: "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----\n"
-
-# Option 3: Disable host validation. Should only be used by lazy debuggers.
-no_grpc_security: true
-```
-
-## HTTP(S) protocol
-
-For HTTP(S) protocol (as currently used by the SafeDump Public Key Server) you need the following configuration:
-
-```proto
-protocol: HTTP_PROTOCOL
-
-# includes protocol, no trailing slash
-http_base_url: "https://safedump-public-key-server.appspot.com"
-```
-
-Note that if no configuration file is found, the above values are used by default.
-
-
-## Side-note: Why two transport protocols?
-
-gRPC is the preferred transport protocol, however support for gRPC within Google App Engine (which currently hosts the SafeDump Public Key Server) does not appear stable yet. Hence we include a simpler HTTP(S) protocol, even though we consider it born deprecated.
-
-
 # Running your own server
 
 Two server implementations are provided. The recommended option for private servers is to use the gRPC server.
@@ -182,7 +135,7 @@ Unlike the public key server, the gRPC server does not automatically purge old p
 	# tcp4 or tcp6
 	listen_protocol: "tcp4"
 
-	# TLS cert / key to use for gRPC server. The following will generate a self-signed certificae:
+	# TLS cert / key to use for gRPC server. The following will generate a self-signed certificate:
 	# openssl req -x509 -newkey rsa:4096 -keyout grpc-key.pem -out grpc-cert.pem -days 3600 -nodes -subj '/CN=localhost' -batch
 	server_cert_path: "grpc-cert.pem"
 	server_key_path: "grpc-key.pem"
@@ -201,7 +154,7 @@ Unlike the public key server, the gRPC server does not automatically purge old p
 	purge_old_keys: true
 
 	# How long, after the normal key expiration, should old keys be kept for breakglass usage?
-   key_retention_period: 720h # 30 days
+   key_retention_period: "720h" # 30 days
 	```
 
 3. Start the server:
@@ -241,6 +194,53 @@ To deploy the GAE app:
 ```bash
 goapp deploy cmd/gaesafedumpserver
 ```
+
+# Client Configuration
+
+(Skip this section unless you are running your own server)
+
+Client configuration should be placed in `~/.safedump_config` with the following contents:
+
+## gRPC protocol
+
+For gRPC protocol (recommended for private servers):
+
+```proto
+protocol: GRPC_PROTOCOL
+
+# host:port of grpc server
+grpc_server: "safedump.example.com:10001"
+
+# One of the following 3 options should be used:
+
+# Option 1: If your gRPC certificate is signed by a CA trusted by the clients operating system, set this:
+use_system_ca_for_grpc: true
+
+# Option 2: If using a self-signed gRPC certificate, then include the full PEM encoded certificate for the gRPC server here
+grpc_cert: "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----\n"
+
+# Option 3: Disable host validation. Should only be used by lazy debuggers.
+no_grpc_security: true
+```
+
+## HTTP(S) protocol
+
+For HTTP(S) protocol (as currently used by the SafeDump Public Key Server) you need the following configuration:
+
+```proto
+protocol: HTTP_PROTOCOL
+
+# includes protocol, no trailing slash
+http_base_url: "https://safedump-public-key-server.appspot.com"
+```
+
+Note that if no configuration file is found, the above values are used by default.
+
+
+## Side-note: Why two transport protocols?
+
+gRPC is the preferred transport protocol, however support for gRPC within Google App Engine (which currently hosts the SafeDump Public Key Server) does not appear stable yet. Hence we include a simpler HTTP(S) protocol, even though we consider it born deprecated.
+
 
 ## Developer Notes
 

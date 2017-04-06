@@ -316,7 +316,7 @@ func (s *SafeDumpServer) SourceName() string {
 
 // CronPurge should be called regularly
 func (s *SafeDumpServer) CronPurge(ctx context.Context) error {
-	log.Println("Running daily cron...")
+	log.Println("Running purge cron...")
 
 	// First purge anything we have that is older than the retention period
 	if s.PurgeOldKeys {
@@ -337,6 +337,8 @@ func (s *SafeDumpServer) CronPurge(ctx context.Context) error {
 	s.cachedKeys = nil
 	s.keysLock.Unlock()
 
+	log.Println("Cron complete")
+
 	return nil
 }
 
@@ -344,10 +346,12 @@ func (s *SafeDumpServer) CronPurge(ctx context.Context) error {
 // We run as often as the CertificateRotationPeriod
 func (s *SafeDumpServer) BeginPurgeCron() {
 	go func() {
-		err := s.CronPurge(context.Background())
-		if err != nil {
-			log.Printf("Error running CronPurge: %s\n", err)
+		for {
+			err := s.CronPurge(context.Background())
+			if err != nil {
+				log.Printf("Error running CronPurge: %s\n", err)
+			}
+			time.Sleep(s.CertificateRotationPeriod)
 		}
-		time.Sleep(s.CertificateRotationPeriod)
 	}()
 }
