@@ -199,7 +199,13 @@ goapp deploy cmd/gaesafedumpserver
 
 (Skip this section unless you are running your own server)
 
-Client configuration should be placed in `~/.safedump_config` with the following contents:
+The client tools will search for configuration in the following order:
+
+1. If `~/.safedump_config` exists, then this file is used.
+2. If `/etc/safedump_config` exists, then this file is used.
+3. Fall back to default configuration, which is to use the SafeDump Public Key Server.
+
+The configuration file format is a text protobuf format, and should contain the following content:
 
 ## gRPC protocol
 

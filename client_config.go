@@ -30,13 +30,19 @@ import (
 )
 
 // CreateClientFromConfiguration loads the client configuration file from the
-// standard location, "~/.safedump_config".
+// standard location, "~/.safedump_config". If no file exists at that location,
+// it will fall back to "/etc/safedump_config", and it that does not exist, we fall
+// back to using a public key server
 func CreateClientFromConfiguration() (*SafeDumpClient, error) {
 	hd, err := homedir.Dir()
 	if err != nil {
 		return nil, err
 	}
 	path := filepath.Join(hd, ".safedump_config")
+	_, err = os.Stat(path)
+	if os.IsNotExist(err) {
+		path = "/etc/safedump_config"
+	}
 
 	conf := &pb.ClientConfig{}
 
