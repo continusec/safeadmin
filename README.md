@@ -53,6 +53,7 @@ In a separate terminal:
 ```bash
 export SSL_CERT_FILE=./examples/grpc-cert.pem # only needed because we are using a self-signed certificate for our sample server
 
+# encrypt a message that can only be decrypted for 5 seconds
 echo Test | ./target/safedump -for 5s > encrypted.out
 
 # decrypt, prints Test
@@ -121,7 +122,7 @@ When `saferestore` runs, it reads from `stdin` the header as written by `safedum
 
 The gRPC server implements the SafeDump protocol. It accepts connections over the gRPC protocol, and writes certificates/keys to a specified directory.
 
-The gRPC server does not automatically purge old private keys. This means that administrators with direct access to this directory can choose to override the TTL specified in encrypted files by using the `breakglassrestore` tool.
+The gRPC server does not automatically purge old private keys immediately upon expirations. This means that administrators with direct access to this directory can choose to override the TTL specified in encrypted files by using the `breakglassrestore` tool. To vary the length of this time, see the [example server configuration](./examples/server-config.proto).
 
 ## Starting the server (`servesafedump`)
 
