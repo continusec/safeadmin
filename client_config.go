@@ -19,14 +19,13 @@ limitations under the License.
 package safeadmin
 
 import (
-	"io/ioutil"
 	"path/filepath"
 
 	"os"
 
 	"github.com/continusec/safeadmin/pb"
-	"github.com/golang/protobuf/proto"
 	homedir "github.com/mitchellh/go-homedir"
+	"google.golang.org/protobuf/encoding/prototext"
 )
 
 // CreateClientFromConfiguration loads the client configuration file from the
@@ -46,33 +45,25 @@ func CreateClientFromConfiguration() (*SafeDumpClient, error) {
 
 	conf := &pb.ClientConfig{}
 
-	confData, err := ioutil.ReadFile(path)
+	confData, err := os.ReadFile(path)
 	switch {
 	case err == nil:
-		err = proto.UnmarshalText(string(confData), conf)
+		err = prototext.Unmarshal(confData, conf)
 		if err != nil {
 			return nil, err
 		}
-	case os.IsNotExist(err): // default to public key server
-		conf.Protocol = pb.ServerProtocol_HTTP_PROTOCOL
-		conf.HttpBaseUrl = "https://safedump-public-key-server.appspot.com"
+	case os.IsNotExist(err): // default to localhost key server
+		var ok bool
+		conf.GrpcServer, ok = os.LookupEnv("SAFE_ADMIN_ADDRESS")
+		if !ok {
+			conf.GrpcServer = "localhost:10001"
+		}
 	default:
 		return nil, err
 	}
 
-	var server SafeDumpServiceClient
-
-	switch conf.Protocol {
-	case pb.ServerProtocol_GRPC_PROTOCOL:
-		server = &gRPCClient{ClientConfig: conf}
-	case pb.ServerProtocol_HTTP_PROTOCOL:
-		server = &httpSafeDumpClient{ClientConfig: conf}
-	default:
-		return nil, ErrInvalidConfig
-	}
-
 	return &SafeDumpClient{
-		Server:  server,
+		Server:  &gRPCClient{ClientConfig: conf},
 		Storage: &FilesystemPersistence{Dir: filepath.Join(hd, ".safedump_cache")},
 	}, nil
 

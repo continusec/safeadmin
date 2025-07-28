@@ -16,20 +16,9 @@ limitations under the License.
 
 */
 
-/*
-
-The following command will rebuild the proto files:
-
-rm -rf pb
-mkdir pb
-protoc --go_out=plugins=grpc:pb safedump.proto
-
- */
-
 syntax = "proto3";
 
-package continusec.safedump;
-option go_package = "pb";
+option go_package = "github.com/continusec/safeadmin/pb";
 
 service SafeDumpService {
     rpc GetPublicCert (GetPublicCertRequest) returns (GetPublicCertResponse) {}
@@ -70,18 +59,13 @@ message ServerConfig {
     string key_retention_period = 9; // golang duration format, how long after a key is expired should we keep it
 }
 
-enum ServerProtocol {
-    GRPC_PROTOCOL = 0;
-    HTTP_PROTOCOL = 1; // since GAE doesn't support GPRC
-}
-
 message ClientConfig {
     bool no_grpc_security = 1; // for GRPC_PROTOCOL only
-    bool use_system_ca_for_grpc = 2; // for GRPC_PROTOCOL only
+    // retired - will always use UNLESS we skip or a cert is specifed. bool use_system_ca_for_grpc = 2; // for GRPC_PROTOCOL only -
     string grpc_cert = 3;   // PEM, for GRPC_PROTOCOL only
     string grpc_server = 4; // host:port, for GRPC_PROTOCOL only
-    string http_base_url = 5; // for HTTP_PROTOCOL only
-    ServerProtocol protocol = 6;
+    // retired string http_base_url = 5; // for HTTP_PROTOCOL only
+    // retired ServerProtocol protocol = 6;
 }
 
 message KeyAndCert {

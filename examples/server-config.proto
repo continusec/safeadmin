@@ -1,0 +1,26 @@
+# Address (host:port) to listen for gRPC requests on (HTTP/2).
+listen_bind: ":10001"
+
+# tcp4 or tcp6
+listen_protocol: "tcp4"
+
+# TLS cert / key to use for gRPC server. The following will generate a self-signed certificate:
+# openssl req -x509 -newkey rsa:4096 -keyout grpc-key.pem -out grpc-cert.pem -days 3600 -nodes -subj '/CN=localhost' -batch
+server_cert_path: "./examples/grpc-cert.pem"
+server_key_path: "./examples/grpc-key.pem"
+
+# Where keys and certificates will be stored:
+archived_keys_dir: "./examples/archived-keys"
+
+# What is the maximum duration that a client can encrypt data for?
+# Note that due to certificate rotation periods, the actual max for a client will be between this and this + the rotation period)
+max_decryption_period: "168h"
+
+# How often will the server rotate the current certificate?
+certificate_rotation_period: "24h"
+
+# Should the server purge old keys?
+purge_old_keys: true
+
+# How long, after the normal key expiration, should old keys be kept for breakglass usage?
+key_retention_period: "720h" # 30 days

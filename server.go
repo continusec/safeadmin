@@ -35,16 +35,18 @@ import (
 	"encoding/hex"
 
 	"github.com/continusec/safeadmin/pb"
-	"github.com/golang/protobuf/proto"
+	"google.golang.org/protobuf/proto"
 )
 
 // SafeDumpServer is the main server object that can handle the business logic, for the defined gRPC service,
 // regardless of actually protocol and persistence layer
 type SafeDumpServer struct {
+	pb.UnimplementedSafeDumpServiceServer
+
 	// Storage is a dumb layer that can store and load stuff
 	Storage SafeDumpPersistence
 
-	// MaxDecryptionPeriod is the maximum length of time the server will commit to being able to decrypt an object encrypted with it's certicates
+	// MaxDecryptionPeriod is the maximum length of time the server will commit to being able to decrypt an object encrypted with it's certificates
 	MaxDecryptionPeriod time.Duration
 
 	// CertificationRotationPeriod is how often a fresh certificate is issued
@@ -320,7 +322,7 @@ func (s *SafeDumpServer) CronPurge(ctx context.Context) error {
 
 	// First purge anything we have that is older than the retention period
 	if s.PurgeOldKeys {
-		cutoff := time.Now().Add(s.KeyRetentionPeriod)
+		cutoff := time.Now().Add(-s.KeyRetentionPeriod)
 		log.Printf("Purging keys older than: %s\n", cutoff.Format(time.RFC3339))
 		err := s.Storage.Purge(ctx, cutoff)
 		if err != nil {

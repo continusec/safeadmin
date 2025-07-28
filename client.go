@@ -30,7 +30,7 @@ import (
 	"crypto/x509"
 
 	"github.com/continusec/safeadmin/pb"
-	"github.com/golang/protobuf/proto"
+	"google.golang.org/protobuf/proto"
 )
 
 // SafeDumpClient is used to interact with a given server

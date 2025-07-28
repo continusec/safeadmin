@@ -1,3 +1,0 @@
-cron:
-- url: /tasks/CronPurge
-  schedule: every 24 hours

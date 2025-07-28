@@ -19,7 +19,6 @@ limitations under the License.
 package main
 
 import (
-	"io/ioutil"
 	"log"
 	"net"
 	"os"
@@ -27,10 +26,10 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/protobuf/encoding/prototext"
 
 	"github.com/continusec/safeadmin"
 	"github.com/continusec/safeadmin/pb"
-	"github.com/golang/protobuf/proto"
 )
 
 func mustParseDuration(s string) time.Duration {
@@ -46,13 +45,13 @@ func main() {
 		log.Fatal("Please specify a config file for the server to use.")
 	}
 
-	confData, err := ioutil.ReadFile(os.Args[1])
+	confData, err := os.ReadFile(os.Args[1])
 	if err != nil {
 		log.Fatalf("Error reading server configuration: %s\n", err)
 	}
 
 	conf := &pb.ServerConfig{}
-	err = proto.UnmarshalText(string(confData), conf)
+	err = prototext.Unmarshal(confData, conf)
 	if err != nil {
 		log.Fatalf("Error parsing server configuration: %s\n", err)
 	}

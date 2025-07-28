@@ -34,6 +34,8 @@ import (
 
 // gRPCClient wraps a client, implementing the server API, which is basically identical (but lacking dial options which we don't use anyway)
 type gRPCClient struct {
+	pb.UnimplementedSafeDumpServiceServer
+
 	ClientConfig *pb.ClientConfig
 
 	clientLock sync.Mutex
@@ -64,19 +66,20 @@ func (s *gRPCClient) getConn(create, unset bool) (*grpc.ClientConn, error) {
 	if s.grpcConnection == nil {
 		if create {
 			var dialOptions []grpc.DialOption
-			if s.ClientConfig.NoGrpcSecurity {
+			switch {
+			case s.ClientConfig.NoGrpcSecurity:
 				// use system CA pool but disable cert validation
 				log.Println("WARNING: Disabling TLS authentication when connecting to gRPC server")
 				dialOptions = append(dialOptions, grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{InsecureSkipVerify: true})))
-			} else if s.ClientConfig.UseSystemCaForGrpc {
-				dialOptions = append(dialOptions, grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{}))) // uses the system CA pool
-			} else {
+			case len(s.ClientConfig.GrpcCert) != 0:
 				// use baked in cert
 				cp := x509.NewCertPool()
 				if !cp.AppendCertsFromPEM([]byte(s.ClientConfig.GrpcCert)) {
 					return nil, ErrInvalidConfig
 				}
 				dialOptions = append(dialOptions, grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{RootCAs: cp})))
+			default: // default to system CA
+				dialOptions = append(dialOptions, grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{}))) // uses the system CA pool
 			}
 
 			rv, err := grpc.Dial(s.ClientConfig.GrpcServer, dialOptions...)

@@ -28,15 +28,14 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"io"
-	"io/ioutil"
 	"log"
 	"regexp"
 	"time"
 
 	"golang.org/x/net/context"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/continusec/safeadmin/pb"
-	"github.com/golang/protobuf/proto"
 )
 
 var (
@@ -151,7 +150,7 @@ func streamDecryptWithHeader(ctx context.Context, server pb.SafeDumpServiceServe
 }
 
 func findAndDecryptChunks(ctx context.Context, server pb.SafeDumpServiceServer, in io.Reader, out io.Writer, ignoreDateCheckOnClient bool) error {
-	dataIn, err := ioutil.ReadAll(in)
+	dataIn, err := io.ReadAll(in)
 	if err != nil {
 		return err
 	}

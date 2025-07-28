@@ -20,7 +20,6 @@ package safeadmin
 
 import (
 	"encoding/hex"
-	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
@@ -28,7 +27,7 @@ import (
 	"time"
 
 	"github.com/continusec/safeadmin/pb"
-	"github.com/golang/protobuf/proto"
+	"google.golang.org/protobuf/proto"
 
 	"golang.org/x/net/context"
 )
@@ -48,7 +47,7 @@ type FilesystemPersistence struct {
 
 // Load returns value if found, nil otherwise. It should ignore the TTL
 func (f *FilesystemPersistence) Load(ctx context.Context, key []byte) ([]byte, error) {
-	bo, err := ioutil.ReadFile(filepath.Join(f.Dir, fnamePrefix+hex.EncodeToString(key)))
+	bo, err := os.ReadFile(filepath.Join(f.Dir, fnamePrefix+hex.EncodeToString(key)))
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, ErrStorageKeyNotFound
@@ -98,7 +97,7 @@ func (f *FilesystemPersistence) Save(ctx context.Context, key, value []byte, ttl
 	}
 
 	// Create temp file
-	tf, err := ioutil.TempFile(f.Dir, "temp-")
+	tf, err := os.CreateTemp(f.Dir, "temp-")
 	if err != nil {
 		return err
 	}
@@ -129,7 +128,7 @@ func (f *FilesystemPersistence) Save(ctx context.Context, key, value []byte, ttl
 }
 
 func deleteIfOld(fpath string, now int64) error {
-	bo, err := ioutil.ReadFile(fpath)
+	bo, err := os.ReadFile(fpath)
 	if err != nil {
 		return err
 	}
@@ -150,7 +149,7 @@ func deleteIfOld(fpath string, now int64) error {
 
 // Purge removes data whose TTL is older than now
 func (f *FilesystemPersistence) Purge(ctx context.Context, now time.Time) error {
-	files, err := ioutil.ReadDir(f.Dir)
+	files, err := os.ReadDir(f.Dir)
 	if err != nil {
 		return err
 	}
